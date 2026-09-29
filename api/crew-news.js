@@ -242,13 +242,34 @@ function normalizeVod(row, station, req) {
   };
 }
 
-async function fetchVods(station, req, {type='review', page=1, perPage=12}={}) {
+async function fetchVodRows(station, {type='review', page=1, perPage=12}={}) {
   const safeType = /^(?:all|review|normal)$/.test(type) ? type : 'review';
   const params = new URLSearchParams({page:String(page),per_page:String(perPage),orderby:'reg_date'});
   const urls = SOOP_VOD_HOSTS.map(host => `${host}/api/${encodeURIComponent(station)}/vods/${safeType}?${params}`);
   const result = await firstJson(urls, {Referer:`https://www.sooplive.com/station/${station}/vod/${safeType}`});
-  const rows = Array.isArray(result.data && result.data.data) ? result.data.data : [];
+  return Array.isArray(result.data && result.data.data) ? result.data.data : [];
+}
+
+async function fetchVods(station, req, options={}) {
+  const rows = await fetchVodRows(station, options);
   return rows.map(row => normalizeVod(row, station, req));
+}
+
+function debugVodRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  const out = {};
+  for (const [key,value] of Object.entries(row)) {
+    if (value == null) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      const text=String(value);
+      if (/thumb|image|img|preview|cover|poster|title|date|time|no|id|url/i.test(key) || /https?:\/\//i.test(text)) {
+        out[key]=text.slice(0,1000);
+      }
+    } else if (typeof value === 'object' && /thumb|image|img|preview|cover|poster|file/i.test(key)) {
+      out[key]=value;
+    }
+  }
+  return out;
 }
 
 function proxyImageUrl(req, url) {
@@ -314,9 +335,16 @@ module.exports = async function handler(req, res) {
     const vodPage = intParam(requestUrl.searchParams.get('page'), 1, 1, 20);
     const vodPerPage = intParam(requestUrl.searchParams.get('per_page'), 12, 1, 30);
     try {
-      const vods = await fetchVods(station, req, {type:vodType,page:vodPage,perPage:vodPerPage});
+      const options={type:vodType,page:vodPage,perPage:vodPerPage};
+      const rows = await fetchVodRows(station, options);
+      const vods = rows.map(row => normalizeVod(row, station, req));
+      const debug = requestUrl.searchParams.get('debug') === '1';
+      const debugId = safeText(requestUrl.searchParams.get('debug_id') || '', 40);
+      const debugRow = debug
+        ? debugVodRow(rows.find(row => String(first(row,['title_no','titleNo','no']) || '').replace(/\D/g,'') === debugId) || rows[0])
+        : undefined;
       setPublicCache(res,{browser:300,cdn:3600,stale:21600});
-      return res.status(200).json({ok:true,station,mode:'vods',count:vods.length,vods});
+      return res.status(200).json({ok:true,station,mode:'vods',count:vods.length,vods,...(debug?{debugRow}: {})});
     } catch (error) {
       setNoStore(res);
       return res.status(502).json({ok:false,error:'soop_vod_unavailable',station});
