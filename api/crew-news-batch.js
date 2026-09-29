@@ -688,7 +688,10 @@ module.exports = async function handler(req, res) {
       try {
         const fallback = await findVodFallback(selected, orderedStations, req);
         if (fallback) selected = {...selected, ...fallback};
-      } catch (_) {
+      } catch (error) {
+        if (requestUrl.searchParams.get('debug_vod') === '1') {
+          selected._vodDebug = {error:String(error && error.stack || error && error.message || error)};
+        }
         // 이미지 보조 조회 실패는 비치명적이다. 대표 소식/기존 이미지는 그대로 유지한다.
       }
     }
