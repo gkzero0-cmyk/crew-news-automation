@@ -2,6 +2,9 @@
 
 const assert=require('assert');
 const batch=require('../api/crew-news-batch.js')._internals;
+const {APP_VERSION,POLICY_VERSION}=require('../lib/version.js');
+assert.strictEqual(APP_VERSION,'1.6.0');
+assert.strictEqual(POLICY_VERSION,'crew-automation-v1.6-server');
 function date(raw,published){ return batch.resolveActivityDateInfo(raw,published); }
 
 assert.deepStrictEqual(date('9월 30일 진드기 여행','2026-09-29 18:00:00'),{date:'2026-09-30',source:'explicit-korean'});
@@ -170,4 +173,24 @@ assert.deepStrictEqual(
   {crop:false,width:1600,height:900}
 );
 
-console.log('crew-news-automation v1.6 reliability tests passed');
+for (const source of [require('fs').readFileSync(require.resolve('../api/status.js'),'utf8'), require('fs').readFileSync(require.resolve('../api/crew-news-batch.js'),'utf8')]) {
+  assert.ok(source.includes('POLICY_VERSION'),'API endpoints must use centralized policy version');
+  assert.ok(!source.includes("'crew-automation-v1.6-server'"),'API endpoints must not duplicate the policy literal');
+}
+
+assert.strictEqual(batch.imageSourceFor({imageSource:'post_member',imageUrl:'https://example.com/member.png'}),'post_member');
+assert.strictEqual(batch.imageSourceFor({fallbackVodUrl:'https://vod.sooplive.com/player/1',imageUrl:'https://example.com/vod.jpg'}),'vod');
+assert.strictEqual(batch.imageSourceFor({imageUrl:''}),'none');
+
+const health=batch.classifyHealth;
+assert.deepStrictEqual(health({selected:{id:'1'},results:[{ok:true,rawCount:10}]}),{healthStatus:'healthy',suspiciousEmpty:false,preservePrevious:false,rawCandidateCount:10});
+assert.deepStrictEqual(health({results:[{ok:true,rawCount:0}]}),{healthStatus:'no_news',suspiciousEmpty:false,preservePrevious:false,rawCandidateCount:0});
+assert.deepStrictEqual(health({results:[{ok:true,rawCount:10}]}),{healthStatus:'suspicious_empty',suspiciousEmpty:true,preservePrevious:true,rawCandidateCount:10});
+assert.deepStrictEqual(health({results:[{ok:false,rawCount:0}],failures:[{station:'x'}]}),{healthStatus:'degraded',suspiciousEmpty:false,preservePrevious:true,rawCandidateCount:0});
+
+// fingerprint는 시트 쓰기 생략 판단에 사용할 수 있도록 동일 입력에 안정적이어야 한다.
+const fingerprintFixture={id:'208458625',strictCrew:'천타버스',strictActivity:'더헌터 사냥대결',activityDate:'2026-09-30',publishedAt:'2026-09-30 01:45:38',imageUrl:'https://example.com/a.png',imageSource:'post_self'};
+assert.strictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture}));
+assert.notStrictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture,imageUrl:'https://example.com/b.png'}));
+
+console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
