@@ -51,3 +51,6 @@ Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` q
 - `updateAction=preserve_previous`, `shouldWrite=false`: suspicious/degraded 상태이므로 기존 정상값 유지
 
 최초 호출처럼 이전 fingerprint가 없으면 정상 대표 소식은 `write`로 처리합니다.
+
+
+<!-- Deployment trigger note: refresh Production after v1.6 fingerprint write-decision merge. -->
