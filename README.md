@@ -67,3 +67,5 @@ Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` q
 - 숨김 `자동화 상태` 시트에 `Fingerprint / UpdateAction / HealthStatus` 진단값 기록
 
 Google Apps Script 프로젝트가 GitHub와 자동 동기화되는 구조는 아니므로, 실제 Code.gs를 변경한 경우 이 백업도 함께 갱신해야 합니다.
+- 상태 시트의 `원문게시일`은 실제 게시글 업로드 시각(`sourcePublishedAt`)을 기록하고, 메인 소식의 `(M/D)` 표시는 활동일(`activityDate`)을 사용합니다.
+
