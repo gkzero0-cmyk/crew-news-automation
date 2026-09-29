@@ -398,6 +398,7 @@ function trimVodFallbackCache() {
 async function findVodFallbackUncached(post, stations, req) {
   if (!post || post.imageUrl || !Array.isArray(stations) || !stations.length) return null;
   const base = requestBase(req);
+  const debugVod = /(?:^|[?&])debug_vod=1(?:&|$)/.test(String(req && req.url || ''));
   let best = null;
   for (const station of stations.slice(0, 8)) {
     try {
@@ -421,6 +422,10 @@ async function findVodFallbackUncached(post, stations, req) {
           const score = vodMatchScore(post, vod);
           if (score < 0 || (best && best.score >= score)) continue;
           best = {score, vod, station};
+          if (debugVod) console.log('[crew-vod-candidate]', JSON.stringify({
+            postId:post.id, station, score, vodId:vod.id, title:vod.title,
+            publishedAt:vod.publishedAt, imageUrl:vod.imageUrl || ''
+          }));
         }
 
         if (best && best.score >= 14) break;
@@ -443,12 +448,19 @@ async function findVodFallbackUncached(post, stations, req) {
         station:best.station, mode:'vod-detail', title_no:String(resolvedVod.id)
       });
       const {status, body:data} = await invokeCrewNews(req, detailParams);
+      if (debugVod) console.log('[crew-vod-detail]', JSON.stringify({
+        postId:post.id, vodId:resolvedVod.id, status,
+        ok:Boolean(data && data.ok), imageUrl:data && data.vod && data.vod.imageUrl || ''
+      }));
       if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
         resolvedVod = {...resolvedVod, ...data.vod, vodUrl:resolvedVod.vodUrl || data.vod.vodUrl || ''};
       }
     } catch (_) {}
   }
-  if (!resolvedVod.imageUrl) return null;
+  if (!resolvedVod.imageUrl) {
+    if (debugVod) console.log('[crew-vod-no-image]', JSON.stringify({postId:post.id,best}));
+    return null;
+  }
 
   return {
     fallbackImageUrl: resolvedVod.imageUrl,
