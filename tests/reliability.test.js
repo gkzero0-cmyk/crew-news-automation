@@ -2,6 +2,9 @@
 
 const assert=require('assert');
 const batch=require('../api/crew-news-batch.js')._internals;
+const {APP_VERSION,POLICY_VERSION}=require('../lib/version.js');
+assert.strictEqual(APP_VERSION,'1.6.0');
+assert.strictEqual(POLICY_VERSION,'crew-automation-v1.6-server');
 function date(raw,published){ return batch.resolveActivityDateInfo(raw,published); }
 
 assert.deepStrictEqual(date('9월 30일 진드기 여행','2026-09-29 18:00:00'),{date:'2026-09-30',source:'explicit-korean'});
@@ -170,4 +173,13 @@ assert.deepStrictEqual(
   {crop:false,width:1600,height:900}
 );
 
-console.log('crew-news-automation v1.6 reliability tests passed');
+for (const source of [require('fs').readFileSync(require.resolve('../api/status.js'),'utf8'), require('fs').readFileSync(require.resolve('../api/crew-news-batch.js'),'utf8')]) {
+  assert.ok(source.includes('POLICY_VERSION'),'API endpoints must use centralized policy version');
+  assert.ok(!source.includes("'crew-automation-v1.6-server'"),'API endpoints must not duplicate the policy literal');
+}
+
+assert.strictEqual(batch.imageSourceFor({imageSource:'post_member',imageUrl:'https://example.com/member.png'}),'post_member');
+assert.strictEqual(batch.imageSourceFor({fallbackVodUrl:'https://vod.sooplive.com/player/1',imageUrl:'https://example.com/vod.jpg'}),'vod');
+assert.strictEqual(batch.imageSourceFor({imageUrl:''}),'none');
+
+console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
