@@ -337,7 +337,7 @@ function dateOnly(value) {
 }
 
 function vodMatchScore(post, vod) {
-  if (!post || !vod || !vod.imageUrl) return -1;
+  if (!post || !vod) return -1;
   const activityDate = post.activityDate || dateOnly(post.publishedAt);
   const vodDate = dateOnly(vod.publishedAt);
   if (!activityDate || !vodDate) return -1;
@@ -346,11 +346,11 @@ function vodMatchScore(post, vod) {
 
   const activity = String(post.strictActivity || post.displaySummary || '').toLowerCase();
   const title = String(vod.title || '').toLowerCase();
-  const tokens = activityTokens(post);
+  const crewName = String(post.strictCrew || '').toLowerCase();
+  const tokens = activityTokens(post).filter(token => token !== crewName);
   const hits = tokens.filter(token => title.includes(token));
   const exactActivity = activity.length >= 2 && title.includes(activity);
   const distinctiveHit = hits.some(token => token.length >= 3);
-  const crewName = String(post.strictCrew || '').toLowerCase();
   const crewHit = crewName.length >= 2 && title.includes(crewName);
   const activityAliasHit = (
     /러닝/.test(activity) && /러닝|달리기/.test(title)
@@ -361,14 +361,22 @@ function vodMatchScore(post, vod) {
   ) || (
     /윷놀이/.test(activity) && /윷놀이/.test(title)
   );
-  // 날짜만 같은 VOD는 금지. 다만 '장지수용소 러닝' ↔ '장지수용소 버추얼 단체러닝'처럼
-  // 크루명 + 활동 핵심어가 함께 맞으면 문구가 완전히 같지 않아도 검증된 관련 VOD로 인정한다.
-  if (!exactActivity && !distinctiveHit && !(crewHit && activityAliasHit)) return -1;
+  const postContext = String(
+    (post.title || '') + ' ' + (post.contents || '') + ' ' + activity
+  ).toLowerCase();
+  const sameDayCrewGroupHit = days === 0 && crewHit &&
+    /단체|크루/.test(postContext) && /단체|크루/.test(title) &&
+    /모임|합방|행사|특집|콘텐츠|컨텐츠|러닝|달리기/.test(title);
+
+  // 날짜만 같은 VOD는 금지. 활동 핵심어가 직접 맞거나,
+  // 같은 날 크루명이 명시된 '단체/크루 활동' VOD처럼 대표 게시글과 맥락이 함께 맞아야 한다.
+  if (!exactActivity && !distinctiveHit && !(crewHit && activityAliasHit) && !sameDayCrewGroupHit) return -1;
 
   let score = days === 0 ? 6 : 2;
   score += exactActivity ? 8 : 0;
   score += crewHit ? 4 : 0;
   score += activityAliasHit ? 5 : 0;
+  score += sameDayCrewGroupHit ? 4 : 0;
   score += hits.length * 4;
   return score;
 }
@@ -427,11 +435,26 @@ async function findVodFallbackUncached(post, stations, req) {
     } catch (_) {}
   }
   if (!best || best.score < 10) return null;
+
+  let resolvedVod = best.vod;
+  if (!resolvedVod.imageUrl && resolvedVod.id) {
+    try {
+      const detailParams = new URLSearchParams({
+        station:best.station, mode:'vod-detail', title_no:String(resolvedVod.id)
+      });
+      const {status, body:data} = await invokeCrewNews(req, detailParams);
+      if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
+        resolvedVod = {...resolvedVod, ...data.vod, vodUrl:resolvedVod.vodUrl || data.vod.vodUrl || ''};
+      }
+    } catch (_) {}
+  }
+  if (!resolvedVod.imageUrl) return null;
+
   return {
-    fallbackImageUrl: best.vod.imageUrl,
-    fallbackSheetImageUrl: best.vod.sheetImageUrl,
+    fallbackImageUrl: resolvedVod.imageUrl,
+    fallbackSheetImageUrl: resolvedVod.sheetImageUrl || resolvedVod.imageUrl,
     fallbackImageSource: best.station === stations[0] ? 'leader_vod' : 'member_vod',
-    fallbackVodUrl: best.vod.vodUrl || ''
+    fallbackVodUrl: resolvedVod.vodUrl || best.vod.vodUrl || ''
   };
 }
 
@@ -543,7 +566,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.0-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.1-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -685,7 +708,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.0-server',
+      policyVersion: 'crew-automation-v1.1-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -703,7 +726,7 @@ module.exports = async function handler(req, res) {
   return res.status(failures.length === results.length ? 502 : 200).json({
     ok: failures.length < results.length,
     complete: failures.length === 0 && auxiliaryFailures.length === 0,
-    policyVersion: 'crew-automation-v1.0-server',
+    policyVersion: 'crew-automation-v1.1-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
