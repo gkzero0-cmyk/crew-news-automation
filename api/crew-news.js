@@ -207,6 +207,48 @@ async function firstJson(urls, headers) {
   throw failure;
 }
 
+async function fetchVodDetail(titleNo, req) {
+  const id = String(titleNo || '').replace(/\D/g, '');
+  if (!id) throw new Error('invalid_vod_id');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const body = new URLSearchParams({ nTitleNo:id, nApiLevel:'10' });
+    const response = await fetch('https://api.m.sooplive.com/station/video/a/view', {
+      method:'POST',
+      redirect:'follow',
+      signal:controller.signal,
+      headers:{
+        ...BROWSER_HEADERS,
+        'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
+        'Origin':'https://vod.sooplive.com',
+        'Referer':`https://vod.sooplive.com/player/${id}`
+      },
+      body:body.toString()
+    });
+    const text = await response.text();
+    let parsed=null;
+    try { parsed=JSON.parse(text); } catch (_) {}
+    if(!response.ok || !parsed || !parsed.data) {
+      const error=new Error('vod_detail_upstream_' + response.status);
+      error.status=response.status;
+      throw error;
+    }
+    const data=parsed.data;
+    const thumb=absoluteHttps(first(data,['thumb','thumbnail','thumb_url','thumbnail_url']) || '');
+    return {
+      id,
+      title:safeText(first(data,['title','title_name']),500),
+      author:safeText(first(data,['writer_nick','user_nick']),160),
+      authorId:safeText(first(data,['bj_id','user_id']),120),
+      imageUrl:thumb,
+      sheetImageUrl:proxyImageUrl(req,thumb)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchMenu(station, headers) {
   const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
   try {
@@ -329,6 +371,19 @@ module.exports = async function handler(req, res) {
   const mode = requestUrl.searchParams.get('mode') || 'posts';
   const station = safeStation(requestUrl.searchParams.get('station') || '');
   if (!station) return res.status(400).json({ error: 'invalid_station' });
+
+  if (mode === 'vod-detail') {
+    const titleNo = safeText(requestUrl.searchParams.get('title_no') || '', 40).replace(/\D/g,'');
+    if (!titleNo) return res.status(400).json({ok:false,error:'invalid_vod_id'});
+    try {
+      const vod = await fetchVodDetail(titleNo, req);
+      setPublicCache(res,{browser:300,cdn:21600,stale:86400});
+      return res.status(200).json({ok:true,station,mode:'vod-detail',vod});
+    } catch (_) {
+      setNoStore(res);
+      return res.status(502).json({ok:false,error:'soop_vod_detail_unavailable',station,titleNo});
+    }
+  }
 
   if (mode === 'vods') {
     const vodType = safeText(requestUrl.searchParams.get('vod_type') || 'review', 16);
