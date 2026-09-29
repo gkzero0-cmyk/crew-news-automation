@@ -225,13 +225,22 @@ function refreshCrewNews() {
 
     let hardFailure = false;
 
+    // 정상 경로에서는 8개 크루를 단일 Vercel 함수 호출로 가져온다.
+    // 집계 endpoint 자체가 실패한 경우에만 기존 크루별 호출로 폴백한다.
+    let batchPayloads = {};
+    try {
+      batchPayloads = fetchAllCrewBatches_(crews);
+    } catch (batchError) {
+      batchPayloads = {};
+    }
+
 
 
     crews.forEach(function(crew) {
 
       try {
 
-        const result = refreshOneCrew_(main, crew);
+        const result = refreshOneCrew_(main, crew, batchPayloads[crew.crew] || null);
 
         runResults.push(result);
 
@@ -307,7 +316,8 @@ function setAutomationState_(state, lastRun) {
 
     }
 
-    sheet.getRange('A14:B14').setValues([['PolicyVersion', 'server-single-source-v5+fingerprint-v3']]);
+    sheet.getRange('A14:B14').setValues([['PolicyVersion', 'server-single-source-v5+fingerprint-v3+single-batch-v1']]);
+    sheet.getRange('A16:B16').setValues([['FetchMode', 'single-batch-v1']]);
 
   } catch (e) {
 
@@ -464,7 +474,7 @@ function readStatusCutoffs_(sheet) {
 
 
 
-function refreshOneCrew_(mainSheet, crew) {
+function refreshOneCrew_(mainSheet, crew, prefetchedPayload) {
   const checkedAt = new Date();
   const newsRange = mainSheet.getRange(crew.newsCell);
   const imageRange = mainSheet.getRange(crew.imageCell);
@@ -475,7 +485,7 @@ function refreshOneCrew_(mainSheet, crew) {
 
   const stations = crew.members.map(function(m) { return m.station; });
   const previousFingerprint = getCrewFingerprint_(crew);
-  const payload = fetchCrewBatch_(stations, crew, previousFingerprint);
+  const payload = prefetchedPayload || fetchCrewBatch_(stations, crew, previousFingerprint);
   const serverPolicy = String(payload && payload.policyVersion || '').trim();
   const results = Array.isArray(payload.results) ? payload.results : [];
   const failedStations = results.filter(function(r) { return !r || !r.ok; });
@@ -686,6 +696,48 @@ function refreshOneCrew_(mainSheet, crew) {
       healthStatus: healthStatus
   };
 }
+
+function fetchAllCrewBatches_(crews) {
+  const requests = (crews || []).map(function(crew) {
+    return {
+      crew: crew.crew,
+      stations: crew.members.map(function(member) { return member.station; }),
+      previousFingerprint: getCrewFingerprint_(crew)
+    };
+  });
+
+  const response = UrlFetchApp.fetch(CREW_AUTOMATION.API_BASE + '/api/crew-news-all', {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      per_page: CREW_AUTOMATION.FETCH_PER_PAGE,
+      crews: requests
+    }),
+    muteHttpExceptions: true,
+    followRedirects: true,
+    headers: { Accept: 'application/json' }
+  });
+
+  const code = response.getResponseCode();
+  let envelope = null;
+  try {
+    envelope = JSON.parse(response.getContentText());
+  } catch (e) {
+    throw new Error('통합 크루 소식 응답 파싱 실패 (' + code + ')');
+  }
+
+  if (code < 200 || code >= 300 || !envelope || !Array.isArray(envelope.batches)) {
+    throw new Error('통합 크루 소식 API 오류 (' + code + ')');
+  }
+
+  const out = {};
+  envelope.batches.forEach(function(row) {
+    if (!row || !row.crew || !row.payload) return;
+    out[String(row.crew)] = row.payload;
+  });
+  return out;
+}
+
 
 function fetchCrewBatch_(stations, crew, previousFingerprint) {
   let url = CREW_AUTOMATION.API_BASE + '/api/crew-news-batch?stations=' +

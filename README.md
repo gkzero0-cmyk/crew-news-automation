@@ -41,6 +41,21 @@
 `selectedFingerprint`가 이전 저장값과 같으면 제목/날짜/이미지 셀 재쓰기를 생략할 수 있습니다.
 
 
+
+### 통합 조회 비용 절감
+
+Apps Script의 정상 갱신 경로는 `/api/crew-news-all`을 한 번 호출해 최대 8개 크루의
+기존 `crew-news-batch` 판정 결과를 묶어서 받습니다.
+
+- 정상 시 Apps Script → Vercel 외부 호출: 크루별 8회가 아니라 주기당 1회
+- 대표 소식 판정 로직은 기존 `crew-news-batch`를 그대로 재사용
+- 통합 endpoint 장애 시에만 기존 크루별 호출로 자동 폴백
+- 각 크루의 fingerprint / `skip_unchanged` / `preserve_previous` 계약은 그대로 유지
+- 상태 시트의 `FetchMode=single-batch-v1`로 적용 여부 확인 가능
+
+SOOP 원본 조회 자체는 각 크루 검증을 위해 계속 필요하므로, 이 변경의 주 목적은
+Vercel 함수 호출 오버헤드와 Apps Script URL Fetch 호출 수를 줄이는 것입니다.
+
 ### 시트 쓰기 최소화
 
 Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` query parameter로 전달할 수 있습니다.

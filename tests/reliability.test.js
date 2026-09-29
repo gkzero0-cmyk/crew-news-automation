@@ -219,4 +219,26 @@ assert.ok(appsScriptSource.includes("selected.sourcePublishedAt || selected.publ
 assert.ok(appsScriptSource.includes("setValue('원문게시일')"),'Apps Script must label the status timestamp as original post time');
 assert.ok(appsScriptSource.includes('server-single-source-v5+fingerprint-v3'),'Apps Script policy marker must track the source-time fix');
 
+
+
+const allBatchInternals=require('../api/crew-news-all.js')._internals;
+assert.deepStrictEqual(
+  allBatchInternals.safeCrewRequests([
+    {crew:'진드기',stations:['jangjh5409','nsnowthemoon','nsnowthemoon'],previousFingerprint:'fnv1a-a'},
+    {crew:'',stations:['bad']},
+    {crew:'천타버스',stations:['243000']}
+  ]),
+  [
+    {crew:'진드기',stations:['jangjh5409','nsnowthemoon'],previousFingerprint:'fnv1a-a'},
+    {crew:'천타버스',stations:['243000'],previousFingerprint:''}
+  ],
+  'single-batch endpoint must sanitize and deduplicate crew requests'
+);
+assert.strictEqual(allBatchInternals.clampInt(100,30,1,50),50);
+assert.ok(appsScriptSource.includes("fetchAllCrewBatches_(crews)"),'Apps Script must make one aggregate fetch before the crew loop');
+assert.ok(appsScriptSource.includes("'/api/crew-news-all'"),'Apps Script must use the single-batch endpoint');
+assert.ok(appsScriptSource.includes("refreshOneCrew_(main, crew, batchPayloads[crew.crew] || null)"),'Apps Script must reuse aggregate payloads');
+assert.ok(appsScriptSource.includes("prefetchedPayload || fetchCrewBatch_"),'Apps Script must retain per-crew fallback only for aggregate endpoint failures');
+assert.ok(appsScriptSource.includes("single-batch-v1"),'Apps Script must expose the aggregate fetch mode');
+
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
