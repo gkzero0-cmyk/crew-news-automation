@@ -202,4 +202,18 @@ assert.deepStrictEqual(writeDecision('fnv1a-a','fnv1a-a',false),{unchanged:true,
 assert.deepStrictEqual(writeDecision('fnv1a-b','fnv1a-a',false),{unchanged:false,shouldWrite:true,updateAction:'write'});
 assert.deepStrictEqual(writeDecision('','fnv1a-a',true),{unchanged:false,shouldWrite:false,updateAction:'preserve_previous'});
 
+const noNewsHealth=health({results:[{ok:true,rawCount:0}]});
+assert.deepStrictEqual(
+  writeDecision('', 'fnv1a-previous', noNewsHealth.preservePrevious),
+  {unchanged:false,shouldWrite:true,updateAction:'write'},
+  'no-news must be a real writable state, not preserve_previous'
+);
+
+const appsScriptSource=require('fs').readFileSync(require('path').join(__dirname,'../apps-script/Code.gs'),'utf8');
+assert.ok(appsScriptSource.includes('previous_fingerprint='),'Apps Script must send previous_fingerprint');
+assert.ok(appsScriptSource.includes("updateAction === 'skip_unchanged'"),'Apps Script must honor skip_unchanged');
+assert.ok(appsScriptSource.includes("payload.complete === true && payload.reliableEmpty === true"),'Apps Script must only clear on reliable no_news');
+assert.ok(appsScriptSource.includes("writeAction: hadDisplay ? 'clear_no_news' : 'skip_no_news'"),'Apps Script must expose no_news clear/skip diagnostics');
+assert.ok(appsScriptSource.includes("['Fingerprint', 'UpdateAction', 'HealthStatus']"),'Apps Script must expose diagnostic status columns');
+
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
