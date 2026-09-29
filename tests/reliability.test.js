@@ -23,4 +23,66 @@ assert.strictEqual(batch.vodDetailConsistent(
   'iamquaddurup'
 ),false);
 
-console.log('crew-news-automation v1.3 reliability tests passed');
+
+
+const hunterPost=batch.strictCrewPost({
+  id:'208458625',
+  title:'9/30 오후4시 천타버스 vs 버인협회 더헌터 사냥대결',
+  originalTitle:'9/30 오후4시 천타버스 vs 버인협회 더헌터 사냥대결',
+  author:'천양',
+  authorId:'243000',
+  publishedAt:'2026-09-30 01:45:38',
+  boardName:'🔊 공지사항',
+  accessType:'public',
+  contents:'',
+  imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/example.png',
+  sheetImageUrl:'https://stimg.sooplive.com/NORMAL_BBS/example.png'
+},'천타버스','243000');
+
+assert.ok(hunterPost,'hunter contest post should be accepted');
+assert.strictEqual(hunterPost.representativeTier,1);
+assert.strictEqual(hunterPost.activityDate,'2026-09-30');
+assert.strictEqual(
+  hunterPost.displaySummary,
+  '천타버스 VS 버인협회 더헌터 사냥대결'
+);
+assert.strictEqual(
+  batch.finalDisplayText(hunterPost,'천타버스'),
+  '천타버스 - 천타버스 VS 버인협회 더헌터 사냥대결 (9/30) 📌'
+);
+
+const oldSpecial={
+  representativeTier:1,
+  representativeMediaPriority:100,
+  strictActivity:'천타버스 추석특집',
+  displaySummary:'천타버스 추석특집',
+  activityDate:'2026-09-26',
+  sourcePublishedAt:'2026-09-25 21:10:52',
+  isCrewLeader:true
+};
+const newContest={
+  ...hunterPost,
+  representativeMediaPriority:0,
+  sourcePublishedAt:'2026-09-30 01:45:38'
+};
+assert.ok(
+  batch.compareRepresentativeCandidates(newContest,oldSpecial) < 0,
+  'new different activity must outrank stale media-priority event'
+);
+
+const sameActivityOlder={
+  ...newContest,
+  sourcePublishedAt:'2026-09-29 01:00:00',
+  representativeMediaPriority:5
+};
+const sameActivityNewer={
+  ...newContest,
+  sourcePublishedAt:'2026-09-30 01:45:38',
+  representativeMediaPriority:0
+};
+assert.ok(
+  batch.compareRepresentativeCandidates(sameActivityOlder,sameActivityNewer) < 0,
+  'media priority may still break ties within the same activity'
+);
+
+console.log('crew-news-automation v1.4 reliability tests passed');

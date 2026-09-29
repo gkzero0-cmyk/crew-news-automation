@@ -87,7 +87,7 @@ const FALLBACK_REPRESENTATIVE = Object.freeze({
 const EXCLUDED_BOARD_RE = /자유|잡담|일상|이벤트|event|팬\s*게시판|애청자|이봤/i;
 const NOTICE_BOARD_RE = /공지|공지사항/i;
 const OFFICIAL_BOARD_RE = /공지|공지사항|스케쥴|스케줄|일정|방송알림|크루/i;
-const COLLECTIVE_RE = /크루|크루원|멤버|친구들|전체|다\s*모|1\s*,?\s*2\s*기|함께|같이|with|합방|회의|점호|회식|여행|러닝|1주년|창단|모집|면접|영입|합격/i;
+const COLLECTIVE_RE = /크루|크루원|멤버|친구들|전체|다\s*모|1\s*,?\s*2\s*기|함께|같이|with|합방|회의|점호|회식|여행|러닝|1주년|창단|모집|면접|영입|합격|사냥\s*대결|대결|대항전|\bvs\.?\b|매치/i;
 
 function safeStations(raw = '') {
   const seen = new Set();
@@ -152,6 +152,8 @@ function detectActivity(raw = '') {
     [/여행|엠티|\bMT\b/i, '여행'],
     [/모임/i, '모임'],
     [/행사/i, '행사'],
+    [/사냥\s*대결|더\s*헌터[^\n]*(?:대결|\bvs\b)|(?:곰\s*)?사냥[^\n]*(?:대결|\bvs\b)/i, '사냥대결'],
+    [/\bvs\.?\b|대결|대항전|매치/i, '대결'],
     [/대회/i, '대회'],
     [/vrc\s*윷놀이|윷놀이/i, 'VRC 윷놀이'],
     [/콘텐츠|컨텐츠/i, '콘텐츠'],
@@ -161,6 +163,59 @@ function detectActivity(raw = '') {
     if (re.test(text)) return label;
   }
   return '';
+}
+
+function deriveCompetitiveDisplaySummary(sourceTitle = '', crew = '', activity = '') {
+  if (!/(?:사냥\s*대결|대결|대항전|\bvs\.?\b|매치)/i.test(String(activity) + ' ' + String(sourceTitle))) return '';
+
+  let text = String(sourceTitle || '').replace(/\s+/g, ' ').trim();
+
+  // Remove only leading schedule metadata. Keep crew/opponent/game/activity wording intact.
+  text = text.replace(
+    /^\s*(?:(?:20\d{2})\s*[./-]\s*)?\d{1,2}\s*[./-]\s*\d{1,2}\s*(?:(?:월|화|수|목|금|토|일)(?:요일)?\s*)?/i,
+    ''
+  );
+  text = text.replace(
+    /^\s*(?:(?:오전|오후)\s*)?\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?\s*/i,
+    ''
+  );
+  text = text.replace(/\s+vs\.?\s+/ig, ' VS ').replace(/\s+/g, ' ').trim();
+
+  const crewToken = normalize(crew);
+  if (!text || !normalize(text).includes(crewToken)) return '';
+  return text;
+}
+
+function sameRepresentativeActivity(a, b) {
+  if (!a || !b) return false;
+  const aActivity = normalize(a.strictActivity || a.displaySummary || '');
+  const bActivity = normalize(b.strictActivity || b.displaySummary || '');
+  if (!aActivity || !bActivity || aActivity !== bActivity) return false;
+
+  const aDate = String(a.activityDate || '').slice(0,10);
+  const bDate = String(b.activityDate || '').slice(0,10);
+  return !aDate || !bDate || aDate === bDate;
+}
+
+function compareRepresentativeCandidates(a, b) {
+  const tier = Number(a.representativeTier || 9) - Number(b.representativeTier || 9);
+  if (tier) return tier;
+
+  // Media preference is only a tie-breaker inside the same activity.
+  // It must never pin an older event above a newer, different crew event.
+  if (sameRepresentativeActivity(a,b)) {
+    const mediaPriority =
+      Number(b.representativeMediaPriority || 0) -
+      Number(a.representativeMediaPriority || 0);
+    if (mediaPriority) return mediaPriority;
+  }
+
+  const time =
+    parseTime(b.sourcePublishedAt || b.publishedAt) -
+    parseTime(a.sourcePublishedAt || a.publishedAt);
+  if (time) return time;
+
+  return Number(Boolean(b.isCrewLeader)) - Number(Boolean(a.isCrewLeader));
 }
 
 function parseTime(value = '') {
@@ -308,7 +363,8 @@ function strictCrewPost(post, crew, station) {
   if (!leaderRepresentative && !direct && !noticeRelated) return null;
 
   const representativeTier = leaderRepresentative ? 1 : 2;
-  const summary = override || activity;
+  const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
+  const summary = override || competitiveSummary || activity;
   const manualDisplay = MANUAL_DISPLAY_SUMMARY[crew] && MANUAL_DISPLAY_SUMMARY[crew][id] || '';
   const displaySummary = manualDisplay || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);
   // Apps Script v4는 후보 허용 판정에서 제목/게시판에 크루명이 있어야 한다.
@@ -660,7 +716,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.3-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.4-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -745,15 +801,7 @@ module.exports = async function handler(req, res) {
       if (!result || !result.ok) continue;
       for (const post of result.posts || []) candidates.push({ ...post, _station: result.station });
     }
-    candidates.sort((a, b) => {
-      const tier = Number(a.representativeTier || 9) - Number(b.representativeTier || 9);
-      if (tier) return tier;
-      const mediaPriority = Number(b.representativeMediaPriority || 0) - Number(a.representativeMediaPriority || 0);
-      if (mediaPriority) return mediaPriority;
-      const time = parseTime(b.sourcePublishedAt || b.publishedAt) - parseTime(a.sourcePublishedAt || a.publishedAt);
-      if (time) return time;
-      return Number(Boolean(b.isCrewLeader)) - Number(Boolean(a.isCrewLeader));
-    });
+    candidates.sort(compareRepresentativeCandidates);
     selected = candidates[0] || null;
 
     if (
@@ -845,7 +893,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.3-server',
+      policyVersion: 'crew-automation-v1.4-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -869,7 +917,7 @@ module.exports = async function handler(req, res) {
       auxiliaryFailures.length === 0 &&
       staleSources.length === 0 &&
       degradedSources.length === 0,
-    policyVersion: 'crew-automation-v1.3-server',
+    policyVersion: 'crew-automation-v1.4-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
@@ -914,6 +962,9 @@ module.exports._internals = {
   postExtractionQuality,
   inferCrew,
   detectActivity,
+  deriveCompetitiveDisplaySummary,
+  sameRepresentativeActivity,
+  compareRepresentativeCandidates,
   strictCrewPost,
   parseTime,
   resolveActivityDate,
