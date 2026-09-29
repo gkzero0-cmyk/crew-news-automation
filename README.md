@@ -11,7 +11,9 @@
 - `/api/crew-news-batch` — 크루별 대표 소식 최종 판정
 - `/api/image` — 검증된 SOOP 이미지/VOD 썸네일 프록시
 
-현재 서버 정책: `crew-automation-v1.1-server`
+현재 서버 정책: `crew-automation-v1.6-server`
+
+버전 정보는 `lib/version.js`를 단일 기준으로 사용합니다. API 상태/배치 응답과 회귀 테스트가 같은 정책 버전을 참조합니다.
 
 ## 운영 원칙
 
