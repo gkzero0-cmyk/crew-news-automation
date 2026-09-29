@@ -53,6 +53,13 @@ const VERIFIED_VOD_MEDIA_PRIORITY = Object.freeze({
 // Generic relevance checks still run for every crew.
 const REJECT_POST_IMAGE_IDS = new Set([]);
 
+// User-verified VOD thumbnails that are semantically related but visually poor
+// representatives of the crew news. They are skipped and the search continues;
+// if no better relevant thumbnail exists the image remains blank.
+const REJECT_VOD_MEDIA_IDS = new Set([
+  '207422027' // 강씨세가 1주년: dark/personal gameplay-style thumbnail
+]);
+
 // 여러 크루원이 같은 일정을 공지해 상대 날짜/기간 표현만 남은 경우의 검증된 실제 시작일.
 // 기간(예: 3박 4일, 3~4일)은 날짜로 해석하지 않는다.
 const MANUAL_ACTIVITY_DATE = Object.freeze({
@@ -569,6 +576,7 @@ function dateOnly(value) {
 
 function vodMatchScore(post, vod) {
   if (!post || !vod) return -1;
+  if (REJECT_VOD_MEDIA_IDS.has(String(vod.id||''))) return -1;
   const activityDate = post.activityDate || dateOnly(post.publishedAt);
   const vodDate = dateOnly(vod.publishedAt);
   if (!activityDate || !vodDate) return -1;
@@ -848,7 +856,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.5-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.6-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -1043,7 +1051,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.5-server',
+      policyVersion: 'crew-automation-v1.6-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -1067,7 +1075,7 @@ module.exports = async function handler(req, res) {
       auxiliaryFailures.length === 0 &&
       staleSources.length === 0 &&
       degradedSources.length === 0,
-    policyVersion: 'crew-automation-v1.5-server',
+    policyVersion: 'crew-automation-v1.6-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,

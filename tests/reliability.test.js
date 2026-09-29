@@ -132,6 +132,22 @@ assert.strictEqual(
   'post_self'
 );
 
+assert.strictEqual(
+  batch.vodMatchScore({
+    ...selectedMeeting,
+    strictCrew:'강씨세가',
+    strictActivity:'강씨세가 1주년',
+    displaySummary:'강씨세가 1주년',
+    activityDate:'2026-09-17'
+  },{
+    id:'207422027',
+    title:'강씨세가 1주년 근황토크',
+    publishedAt:'2026-09-17 20:00:00'
+  }),
+  -1,
+  'user-verified visually poor VOD thumbnail must be skipped'
+);
+
 const preferredVodScore=batch.vodMatchScore(selectedMeeting,{
   id:'208370567',
   title:'[이브닛]머리퍼리 회의와 후열겜',
@@ -154,4 +170,4 @@ assert.deepStrictEqual(
   {crop:false,width:1600,height:900}
 );
 
-console.log('crew-news-automation v1.5 reliability tests passed');
+console.log('crew-news-automation v1.6 reliability tests passed');
