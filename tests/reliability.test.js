@@ -85,4 +85,73 @@ assert.ok(
   'media priority may still break ties within the same activity'
 );
 
-console.log('crew-news-automation v1.4 reliability tests passed');
+
+const selectedMeeting={
+  id:'meeting-main',
+  strictCrew:'머리퍼리',
+  strictActivity:'머리퍼리 회의',
+  displaySummary:'머리퍼리 회의',
+  activityDate:'2026-09-28',
+  originalTitle:'머리퍼리 회의',
+  contents:'머리퍼리 회의',
+  boardName:'공지사항',
+  imageUrl:'',
+  sheetImageUrl:'',
+  isCrewLeader:false,
+  extractionComplete:true
+};
+const memberMeetingImage={
+  ...selectedMeeting,
+  id:'meeting-member',
+  originalTitle:'9/28 머리퍼리 회의합니다',
+  imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/meeting.png',
+  sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=x&fit=sheet',
+  isCrewLeader:true
+};
+const wrongDayImage={
+  ...memberMeetingImage,
+  id:'meeting-wrong-day',
+  activityDate:'2026-09-27'
+};
+const pickedPostImage=batch.choosePostImageCandidate(
+  selectedMeeting,
+  [selectedMeeting,wrongDayImage,memberMeetingImage]
+);
+assert.ok(pickedPostImage);
+assert.strictEqual(pickedPostImage.imageSource,'post_member');
+assert.strictEqual(pickedPostImage.imagePostId,'meeting-member');
+
+const selectedSelfImage={
+  ...selectedMeeting,
+  id:'meeting-self',
+  imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/self.png',
+  sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=self&fit=sheet'
+};
+assert.strictEqual(
+  batch.choosePostImageCandidate(selectedSelfImage,[selectedSelfImage,memberMeetingImage]).imageSource,
+  'post_self'
+);
+
+const preferredVodScore=batch.vodMatchScore(selectedMeeting,{
+  id:'208370567',
+  title:'[이브닛]머리퍼리 회의와 후열겜',
+  publishedAt:'2026-09-28 19:00:00'
+});
+const genericVodScore=batch.vodMatchScore(selectedMeeting,{
+  id:'other',
+  title:'머리퍼리 회의',
+  publishedAt:'2026-09-28 19:00:00'
+});
+assert.ok(preferredVodScore>genericVodScore,'verified representative VOD should win a relevant tie');
+
+const imageInternals=require('../api/image.js')._internals;
+assert.deepStrictEqual(
+  imageInternals.cropPlanForSheet(1000,2200),
+  {crop:true,left:0,top:0,width:1000,height:1250}
+);
+assert.deepStrictEqual(
+  imageInternals.cropPlanForSheet(1600,900),
+  {crop:false,width:1600,height:900}
+);
+
+console.log('crew-news-automation v1.5 reliability tests passed');

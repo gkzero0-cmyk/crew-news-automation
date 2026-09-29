@@ -467,7 +467,7 @@ function proxyImageUrl(req, url) {
   if (!url) return '';
   const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() || 'https';
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'crew-news-automation.vercel.app').split(',')[0].trim();
-  return `${proto}://${host}/api/image?url=${encodeURIComponent(url)}`;
+  return `${proto}://${host}/api/image?url=${encodeURIComponent(url)}&fit=sheet`;
 }
 
 function normalizePost(row, station, menuByNo, req) {

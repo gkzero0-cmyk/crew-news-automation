@@ -43,6 +43,16 @@ const REPRESENTATIVE_MEDIA_PRIORITY = Object.freeze({
   '천타버스': { '208075141': 100 }
 });
 
+// Verified VODs may receive a small tie-break boost after the generic
+// same-date/same-activity checks. This is never enough to bypass relevance.
+const VERIFIED_VOD_MEDIA_PRIORITY = Object.freeze({
+  '머리퍼리': { '208370567': 24 }
+});
+
+// A post image can be explicitly rejected later without disabling the news item.
+// Generic relevance checks still run for every crew.
+const REJECT_POST_IMAGE_IDS = new Set([]);
+
 // 여러 크루원이 같은 일정을 공지해 상대 날짜/기간 표현만 남은 경우의 검증된 실제 시작일.
 // 기간(예: 3박 4일, 3~4일)은 날짜로 해석하지 않는다.
 const MANUAL_ACTIVITY_DATE = Object.freeze({
@@ -437,6 +447,121 @@ function activityTokens(post) {
   return semanticTokens(post && (post.displaySummary || post.strictActivity || post.summary || ''));
 }
 
+function activityFamily(value='') {
+  const text=String(value||'').toLowerCase();
+  if(/회의/.test(text)) return 'meeting';
+  if(/러닝|달리기/.test(text)) return 'running';
+  if(/여행|엠티|\bmt\b/.test(text)) return 'travel';
+  if(/윷놀이/.test(text)) return 'yut';
+  if(/사냥\s*대결|더\s*헌터|대결|대항전|\bvs\b/.test(text)) return 'contest';
+  if(/소울\s*체인드|soul\s*chained|체인투게더/.test(text)) return 'soulchained';
+  if(/1\s*주년|주년/.test(text)) return 'anniversary';
+  if(/합방/.test(text)) return 'collab';
+  if(/모캡/.test(text)) return 'mocap';
+  if(/모집|면접|영입|신규\s*멤버|신입\s*멤버|합격/.test(text)) return 'recruit';
+  if(/특집/.test(text)) return 'special';
+  return '';
+}
+
+function sameNewsScore(selected, candidate) {
+  if (!selected || !candidate) return -1;
+  if (String(selected.strictCrew||'') !== String(candidate.strictCrew||'')) return -1;
+
+  const selectedDate=String(selected.activityDate||'').slice(0,10);
+  const candidateDate=String(candidate.activityDate||'').slice(0,10);
+  if (!selectedDate || !candidateDate || selectedDate !== candidateDate) return -1;
+
+  const a=String(selected.displaySummary||selected.strictActivity||'');
+  const b=String(candidate.displaySummary||candidate.strictActivity||'');
+  const na=normalize(a), nb=normalize(b);
+  if (!na || !nb) return -1;
+
+  let score=0;
+  if (na===nb || na.includes(nb) || nb.includes(na)) score+=18;
+
+  const familyA=activityFamily(a);
+  const familyB=activityFamily(b);
+  if (familyA && familyA===familyB) score+=14;
+
+  const crewToken=normalize(selected.strictCrew||'');
+  const tokensA=semanticTokens(a).filter(token=>normalize(token)!==crewToken);
+  const textB=String(
+    (candidate.originalTitle||candidate.title||'')+' '+
+    (candidate.contents||'')+' '+b
+  ).toLowerCase();
+  const hits=tokensA.filter(token=>textB.includes(token.toLowerCase()));
+  score+=Math.min(12,hits.length*4);
+
+  if (String(selected.id||'')===String(candidate.id||'')) score+=8;
+  return score>=14 ? score : -1;
+}
+
+function unsuitablePostImageContext(post) {
+  if (!post || !post.imageUrl) return true;
+  if (REJECT_POST_IMAGE_IDS.has(String(post.id||''))) return true;
+
+  const title=String(post.originalTitle||post.title||'');
+  const body=String(post.contents||'');
+  const text=(title+' '+body).replace(/\s+/g,' ');
+  const activity=String(post.strictActivity||post.displaySummary||'');
+  const family=activityFamily(activity);
+
+  // Clearly personal/reward/media-only contexts are poor representative images
+  // unless the same text still names a recognized crew activity.
+  const weakMedia=/셀카|개인\s*사진|사진\s*자랑|짤|팬아트|방셀|굿즈|당첨|배송|상품|경품|후원\s*감사|조회수\s*달성/i.test(text);
+  if (weakMedia && !family) return true;
+  return false;
+}
+
+function postImageCandidateScore(selected, candidate) {
+  if (!candidate || !candidate.imageUrl || unsuitablePostImageContext(candidate)) return -1;
+  const same=sameNewsScore(selected,candidate);
+  if (same<0) return -1;
+
+  let score=same;
+  if (String(selected.id||'')===String(candidate.id||'')) score+=100;
+  if (candidate.isCrewLeader) score+=4;
+  if (NOTICE_BOARD_RE.test(String(candidate.boardName||''))) score+=3;
+  if (candidate.extractionComplete!==false) score+=2;
+  return score;
+}
+
+function choosePostImageCandidate(selected, candidates) {
+  if (!selected) return null;
+  const list=Array.isArray(candidates)?candidates:[];
+
+  // Priority 1: image attached to the selected representative post, but only
+  // after it passes the same relevance gate used for every crew.
+  const self=list.find(item=>String(item?.id||'')===String(selected.id||'')) || selected;
+  const selfScore=postImageCandidateScore(selected,self);
+  if (selfScore>=0) {
+    return {
+      imageUrl:self.imageUrl,
+      sheetImageUrl:self.sheetImageUrl||self.imageUrl,
+      imageSource:'post_self',
+      imagePostId:String(self.id||''),
+      imageSuitabilityScore:selfScore
+    };
+  }
+
+  // Priority 2: another crew member's post about the exact same dated activity.
+  const others=list
+    .filter(item=>String(item?.id||'')!==String(selected.id||''))
+    .map(item=>({item,score:postImageCandidateScore(selected,item)}))
+    .filter(row=>row.score>=0)
+    .sort((a,b)=>b.score-a.score || parseTime(b.item.sourcePublishedAt||b.item.publishedAt)-parseTime(a.item.sourcePublishedAt||a.item.publishedAt));
+
+  if (!others.length) return null;
+  const best=others[0];
+  return {
+    imageUrl:best.item.imageUrl,
+    sheetImageUrl:best.item.sheetImageUrl||best.item.imageUrl,
+    imageSource:'post_member',
+    imagePostId:String(best.item.id||''),
+    imageSuitabilityScore:best.score
+  };
+}
+
 function dateOnly(value) {
   const parsed = parseTime(value);
   return parsed ? formatKstDate(new Date(parsed)) : '';
@@ -484,6 +609,16 @@ function vodMatchScore(post, vod) {
   score += activityAliasHit ? 5 : 0;
   score += sameDayCrewGroupHit ? 4 : 0;
   score += hits.length * 4;
+
+  const family=activityFamily(activity);
+  if (family && family===activityFamily(title)) score+=5;
+  if (crewHit && family) score+=3;
+
+  const verifiedBoost=Number(
+    VERIFIED_VOD_MEDIA_PRIORITY[post.strictCrew] &&
+    VERIFIED_VOD_MEDIA_PRIORITY[post.strictCrew][String(vod.id||'')] || 0
+  );
+  score += verifiedBoost;
   return score;
 }
 
@@ -527,12 +662,12 @@ async function findVodFallbackUncached(post, stations, req) {
 
   let best = null;
   const startedAt=Date.now();
-  const maxWorkMs=8500;
-  for (const station of stations.slice(0, 4)) {
+  const maxWorkMs=9500;
+  for (const station of stations.slice(0, 5)) {
     if (Date.now() - startedAt > maxWorkMs) break;
     try {
       const targetDate = post.activityDate || dateOnly(post.publishedAt);
-      const maxPages = 4;
+      const maxPages = 3;
 
       for (let page = 1; page <= maxPages; page += 1) {
         if (Date.now() - startedAt > maxWorkMs) break;
@@ -555,8 +690,6 @@ async function findVodFallbackUncached(post, stations, req) {
           best = {score, vod, station};
         }
 
-        if (best && best.score >= 14) break;
-
         // 최신순 목록이 목표 활동일보다 하루 이상 과거로 내려가면 더 볼 필요가 없다.
         if (targetDate && oldestDate) {
           const cutoff = Date.parse(targetDate + 'T00:00:00+09:00') - 86400000;
@@ -565,7 +698,6 @@ async function findVodFallbackUncached(post, stations, req) {
         if (vods.length < 20) break;
       }
 
-      if (best && best.score >= 14) break;
     } catch (_) {
       // 한 방송국의 VOD 조회 실패는 다른 방송국 후보 탐색을 막지 않는다.
     }
@@ -631,7 +763,7 @@ async function findVodFallback(post, stations, req) {
 
 function imageSourceFor(post) {
   if (!post) return 'none';
-  if (post.imageUrl) return 'post';
+  if (post.imageUrl) return String(post.imageSource || 'post');
   if (post.fallbackImageUrl) return String(post.fallbackImageSource || 'fallback');
   return 'none';
 }
@@ -716,7 +848,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.4-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.5-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -804,6 +936,23 @@ module.exports = async function handler(req, res) {
     candidates.sort(compareRepresentativeCandidates);
     selected = candidates[0] || null;
 
+    if (selected) {
+      const originalPostImageUrl=selected.imageUrl||'';
+      const originalPostSheetImageUrl=selected.sheetImageUrl||'';
+      const chosenPostImage=choosePostImageCandidate(selected,candidates);
+      selected={
+        ...selected,
+        originalPostImageUrl,
+        originalPostSheetImageUrl,
+        imageUrl:chosenPostImage ? chosenPostImage.imageUrl : '',
+        sheetImageUrl:chosenPostImage ? chosenPostImage.sheetImageUrl : '',
+        imageSource:chosenPostImage ? chosenPostImage.imageSource : 'none',
+        imagePostId:chosenPostImage ? chosenPostImage.imagePostId : '',
+        imageSuitabilityScore:chosenPostImage ? chosenPostImage.imageSuitabilityScore : null,
+        imageRejected:Boolean(originalPostImageUrl && !chosenPostImage)
+      };
+    }
+
     if (
       selected &&
       (selected.extractionComplete === false || !selected.imageUrl) &&
@@ -824,7 +973,8 @@ module.exports = async function handler(req, res) {
         ) {
           selected.imageUrl = verification.imageUrl;
           selected.sheetImageUrl = verification.sheetImageUrl || verification.imageUrl;
-          selected.imageSource = 'public_post';
+          selected.imageSource = 'post_self_verified';
+          selected.imagePostId = String(selected.id||'');
         }
       } catch (_) {
         selected.publicVerification = 'unavailable';
@@ -893,7 +1043,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.4-server',
+      policyVersion: 'crew-automation-v1.5-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -917,7 +1067,7 @@ module.exports = async function handler(req, res) {
       auxiliaryFailures.length === 0 &&
       staleSources.length === 0 &&
       degradedSources.length === 0,
-    policyVersion: 'crew-automation-v1.4-server',
+    policyVersion: 'crew-automation-v1.5-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
@@ -947,6 +1097,9 @@ module.exports = async function handler(req, res) {
       imageUrl: selected.imageUrl || '',
       sheetImageUrl: selected.sheetImageUrl || '',
       imageSource: selected.imageSource || imageSourceFor(selected),
+      imagePostId: selected.imagePostId || '',
+      imageSuitabilityScore: selected.imageSuitabilityScore ?? null,
+      imageRejected: Boolean(selected.imageRejected),
       fallbackVodUrl: selected.fallbackVodUrl || '',
       fingerprint: stableFingerprint(selected),
       representativeTier: selected.representativeTier,
@@ -975,6 +1128,11 @@ module.exports._internals = {
   displayDateFor,
   finalDisplayText,
   activityTokens,
+  activityFamily,
+  sameNewsScore,
+  unsuitablePostImageContext,
+  postImageCandidateScore,
+  choosePostImageCandidate,
   vodMatchScore,
   findVodFallback,
   vodFallbackKey,

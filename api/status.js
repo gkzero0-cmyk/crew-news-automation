@@ -1,5 +1,5 @@
 'use strict';
-const POLICY='crew-automation-v1.4-server';
+const POLICY='crew-automation-v1.5-server';
 module.exports = async function handler(req,res) {
   res.setHeader('Cache-Control','no-store, max-age=0');
   return res.status(200).json({
@@ -12,7 +12,11 @@ module.exports = async function handler(req,res) {
       publicPostVerification:true,
       vodDetailVerification:true,
       activityDateSource:true,
-      staleSourceProtection:true
+      staleSourceProtection:true,
+      imageSuitabilityPolicy:true,
+      memberPostImageFallback:true,
+      crossMemberVodRanking:true,
+      portraitPosterCrop:true
     },
     timestamp:new Date().toISOString()
   });
