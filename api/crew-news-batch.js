@@ -862,6 +862,7 @@ module.exports = async function handler(req, res) {
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
   const forceRefresh = requestUrl.searchParams.get('refresh') === '1';
+  const previousFingerprint = String(requestUrl.searchParams.get('previous_fingerprint') || '').trim().slice(0, 128);
   const stations = safeStations(requestUrl.searchParams.get('stations') || '');
   if (!stations.length) return res.status(400).json({ error: 'invalid_stations' });
 
@@ -1050,6 +1051,10 @@ module.exports = async function handler(req, res) {
     selected ? 'healthy' :
     suspiciousEmpty ? 'suspicious_empty' : 'no_news';
   const preservePrevious = healthStatus === 'degraded' || healthStatus === 'suspicious_empty';
+  const selectedFingerprint = selected ? stableFingerprint(selected) : '';
+  const unchanged = Boolean(selectedFingerprint && previousFingerprint && selectedFingerprint === previousFingerprint);
+  const shouldWrite = !preservePrevious && !unchanged;
+  const updateAction = preservePrevious ? 'preserve_previous' : unchanged ? 'skip_unchanged' : 'write';
 
   // 후보가 비었는데 일부 방송국/보조 검색이 실패했다면 "소식 없음"이 아니라 조회 실패다.
   // 200 + 빈 후보를 반환하면 Apps Script가 기존 정상 소식을 지울 수 있으므로 오류 응답으로 보존시킨다.
@@ -1102,7 +1107,11 @@ module.exports = async function handler(req, res) {
     healthStatus,
     preservePrevious,
     rawCandidateCount,
-    selectedFingerprint: selected ? stableFingerprint(selected) : '',
+    selectedFingerprint,
+    previousFingerprint,
+    unchanged,
+    shouldWrite,
+    updateAction,
     selected: selected ? {
       id: selected.id,
       station: selected._station,
