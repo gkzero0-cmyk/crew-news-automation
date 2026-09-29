@@ -11,7 +11,7 @@
 - `/api/crew-news-batch` — 크루별 대표 소식 최종 판정
 - `/api/image` — 검증된 SOOP 이미지/VOD 썸네일 프록시
 
-현재 서버 정책: `crew-automation-v1.0-server`
+현재 서버 정책: `crew-automation-v1.1-server`
 
 ## 운영 원칙
 
