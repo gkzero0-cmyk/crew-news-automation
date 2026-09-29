@@ -193,4 +193,13 @@ const fingerprintFixture={id:'208458625',strictCrew:'천타버스',strictActivit
 assert.strictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture}));
 assert.notStrictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture,imageUrl:'https://example.com/b.png'}));
 
+// Apps Script write contract: same fingerprint skips writes; protected states preserve previous data.
+const writeDecision=(selectedFingerprint,previousFingerprint,preservePrevious)=>{
+  const unchanged=Boolean(selectedFingerprint&&previousFingerprint&&selectedFingerprint===previousFingerprint);
+  return {unchanged,shouldWrite:!preservePrevious&&!unchanged,updateAction:preservePrevious?'preserve_previous':unchanged?'skip_unchanged':'write'};
+};
+assert.deepStrictEqual(writeDecision('fnv1a-a','fnv1a-a',false),{unchanged:true,shouldWrite:false,updateAction:'skip_unchanged'});
+assert.deepStrictEqual(writeDecision('fnv1a-b','fnv1a-a',false),{unchanged:false,shouldWrite:true,updateAction:'write'});
+assert.deepStrictEqual(writeDecision('','fnv1a-a',true),{unchanged:false,shouldWrite:false,updateAction:'preserve_previous'});
+
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);

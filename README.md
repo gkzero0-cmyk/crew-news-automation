@@ -39,3 +39,15 @@
 
 `preservePrevious=true`이면 시트 자동화는 기존 정상 대표 소식을 삭제하거나 빈 값으로 덮어쓰지 않아야 합니다.
 `selectedFingerprint`가 이전 저장값과 같으면 제목/날짜/이미지 셀 재쓰기를 생략할 수 있습니다.
+
+
+### 시트 쓰기 최소화
+
+Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` query parameter로 전달할 수 있습니다.
+배치 API는 다음 계약을 반환합니다.
+
+- `updateAction=write`, `shouldWrite=true`: 대표 소식이 새로 생겼거나 변경됨
+- `updateAction=skip_unchanged`, `shouldWrite=false`: fingerprint가 동일하므로 Sheets 쓰기 생략
+- `updateAction=preserve_previous`, `shouldWrite=false`: suspicious/degraded 상태이므로 기존 정상값 유지
+
+최초 호출처럼 이전 fingerprint가 없으면 정상 대표 소식은 `write`로 처리합니다.
