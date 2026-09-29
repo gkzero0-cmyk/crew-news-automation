@@ -397,22 +397,20 @@ function trimVodFallbackCache() {
 
 async function findVodFallbackUncached(post, stations, req) {
   if (!post || post.imageUrl || !Array.isArray(stations) || !stations.length) return null;
-  const base = requestBase(req);
-  const debugVod = /(?:^|[?&])debug_vod=1(?:&|$)/.test(String(req && req.url || ''));
-  const debugRows = [];
+
   let best = null;
   for (const station of stations.slice(0, 8)) {
     try {
-      // 최근 N개 고정이 아니라 대표 활동일에 도달할 때까지만 필요한 페이지만 탐색한다.
-      // 각 페이지는 CDN 캐시되므로 오래된 활동도 찾되 불필요한 전체 VOD 스캔은 피한다.
       const targetDate = post.activityDate || dateOnly(post.publishedAt);
       const maxPages = 6;
+
       for (let page = 1; page <= maxPages; page += 1) {
         const params = new URLSearchParams({
-          station, mode:'vods', vod_type:'review', page:String(page), per_page:'12'
+          station, mode:'vods', vod_type:'review', page:String(page), per_page:'20'
         });
         const {status, body:data} = await invokeCrewNews(req, params);
         if (status < 200 || status >= 300 || !data || data.ok !== true) break;
+
         const vods = Array.isArray(data.vods) ? data.vods : [];
         if (!vods.length) break;
 
@@ -420,32 +418,31 @@ async function findVodFallbackUncached(post, stations, req) {
         for (const vod of vods) {
           const vodDate = dateOnly(vod.publishedAt);
           if (vodDate && (!oldestDate || vodDate < oldestDate)) oldestDate = vodDate;
+
           const score = vodMatchScore(post, vod);
-          if (debugVod && vodDate && Math.abs(Date.parse((post.activityDate || dateOnly(post.publishedAt)) + 'T00:00:00+09:00') - Date.parse(vodDate + 'T00:00:00+09:00')) <= 86400000) {
-            debugRows.push({id:vod.id,title:vod.title,publishedAt:vod.publishedAt,score,imageUrl:vod.imageUrl || ''});
-          }
           if (score < 0 || (best && best.score >= score)) continue;
           best = {score, vod, station};
-          if (debugVod) console.log('[crew-vod-candidate]', JSON.stringify({
-            postId:post.id, station, score, vodId:vod.id, title:vod.title,
-            publishedAt:vod.publishedAt, imageUrl:vod.imageUrl || ''
-          }));
         }
 
         if (best && best.score >= 14) break;
-        // 정렬이 최신순이므로 목표일보다 충분히 과거까지 내려갔다면 더 볼 필요가 없다.
+
+        // 최신순 목록이 목표 활동일보다 하루 이상 과거로 내려가면 더 볼 필요가 없다.
         if (targetDate && oldestDate) {
-          const cutoff = new Date(Date.parse(targetDate + 'T00:00:00+09:00') - 86400000);
-          if (Date.parse(oldestDate + 'T00:00:00+09:00') < cutoff.getTime()) break;
+          const cutoff = Date.parse(targetDate + 'T00:00:00+09:00') - 86400000;
+          if (Date.parse(oldestDate + 'T00:00:00+09:00') < cutoff) break;
         }
-        if (vods.length < 12) break;
+        if (vods.length < 20) break;
       }
+
       if (best && best.score >= 14) break;
-    } catch (_) {}
+    } catch (_) {
+      // 한 방송국의 VOD 조회 실패는 다른 방송국 후보 탐색을 막지 않는다.
+    }
   }
-  if (debugVod) post._vodDebug = {...(post._vodDebug || {}),rows:debugRows,best:best ? {score:best.score,station:best.station,vod:best.vod} : null};
+
   if (!best || best.score < 10) return null;
 
+  // 목록 API에는 썸네일이 없는 경우가 있어, 최종 후보 1건만 상세 API로 보강한다.
   let resolvedVod = best.vod;
   if (!resolvedVod.imageUrl && resolvedVod.id) {
     try {
@@ -453,21 +450,19 @@ async function findVodFallbackUncached(post, stations, req) {
         station:best.station, mode:'vod-detail', title_no:String(resolvedVod.id)
       });
       const {status, body:data} = await invokeCrewNews(req, detailParams);
-      if (debugVod) {
-        post._vodDebug = {
-          ...(post._vodDebug || {}),
-          detail:{vodId:resolvedVod.id,status,ok:Boolean(data && data.ok),imageUrl:data && data.vod && data.vod.imageUrl || ''}
+      if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
+        resolvedVod = {
+          ...resolvedVod,
+          ...data.vod,
+          vodUrl:resolvedVod.vodUrl || data.vod.vodUrl || ''
         };
       }
-      if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
-        resolvedVod = {...resolvedVod, ...data.vod, vodUrl:resolvedVod.vodUrl || data.vod.vodUrl || ''};
-      }
-    } catch (_) {}
+    } catch (_) {
+      // 상세 썸네일 보강 실패는 대표 소식 자체의 실패로 취급하지 않는다.
+    }
   }
-  if (!resolvedVod.imageUrl) {
-    if (debugVod) console.log('[crew-vod-no-image]', JSON.stringify({postId:post.id,best}));
-    return null;
-  }
+
+  if (!resolvedVod.imageUrl) return null;
 
   return {
     fallbackImageUrl: resolvedVod.imageUrl,
@@ -585,7 +580,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.1-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.2-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -688,10 +683,7 @@ module.exports = async function handler(req, res) {
       try {
         const fallback = await findVodFallback(selected, orderedStations, req);
         if (fallback) selected = {...selected, ...fallback};
-      } catch (error) {
-        if (requestUrl.searchParams.get('debug_vod') === '1') {
-          selected._vodDebug = {error:String(error && error.stack || error && error.message || error)};
-        }
+      } catch (_) {
         // 이미지 보조 조회 실패는 비치명적이다. 대표 소식/기존 이미지는 그대로 유지한다.
       }
     }
@@ -730,7 +722,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.1-server',
+      policyVersion: 'crew-automation-v1.2-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -748,7 +740,7 @@ module.exports = async function handler(req, res) {
   return res.status(failures.length === results.length ? 502 : 200).json({
     ok: failures.length < results.length,
     complete: failures.length === 0 && auxiliaryFailures.length === 0,
-    policyVersion: 'crew-automation-v1.1-server',
+    policyVersion: 'crew-automation-v1.2-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
@@ -775,8 +767,7 @@ module.exports = async function handler(req, res) {
       fallbackVodUrl: selected.fallbackVodUrl || '',
       fingerprint: stableFingerprint(selected),
       representativeTier: selected.representativeTier,
-      isCrewLeader: selected.isCrewLeader,
-      ...(requestUrl.searchParams.get('debug_vod') === '1' ? {debugVod:selected._vodDebug || null} : {})
+      isCrewLeader: selected.isCrewLeader
     } : null,
     results
   });
