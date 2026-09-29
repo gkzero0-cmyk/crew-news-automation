@@ -2,6 +2,7 @@
 
 const crewNewsHandler=require('./crew-news.js');
 const crewNewsInternals=crewNewsHandler._internals || {};
+const {POLICY_VERSION}=require('../lib/version.js');
 
 const CREW_BY_LEADER = Object.freeze({
   yjkim5500: '조적단',
@@ -856,7 +857,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.6-server');
+  res.setHeader('X-Crew-News-Policy', POLICY_VERSION);
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -1051,7 +1052,7 @@ module.exports = async function handler(req, res) {
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.6-server',
+      policyVersion: POLICY_VERSION,
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
@@ -1075,7 +1076,7 @@ module.exports = async function handler(req, res) {
       auxiliaryFailures.length === 0 &&
       staleSources.length === 0 &&
       degradedSources.length === 0,
-    policyVersion: 'crew-automation-v1.6-server',
+    policyVersion: POLICY_VERSION,
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
