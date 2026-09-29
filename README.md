@@ -26,3 +26,16 @@
 ## Vercel
 
 이 저장소를 별도 Vercel Project로 연결하고 Root Directory는 저장소 루트(`./`)를 사용합니다.
+
+
+## 대표 소식 건강 상태
+
+배치 응답은 대표 소식의 상태를 `healthStatus`로 구분합니다.
+
+- `healthy`: 검증된 대표 소식이 선택됨
+- `no_news`: 정상 조회됐고 원본 후보도 없어 실제 소식 없음으로 판단
+- `suspicious_empty`: 원본 게시글은 있으나 엄격 필터 뒤 대표 후보가 없음. 기존 정상값 보존 권장
+- `degraded`: 조회 실패, stale, 보조 검색 실패 또는 메타데이터 저하. 기존 정상값 보존
+
+`preservePrevious=true`이면 시트 자동화는 기존 정상 대표 소식을 삭제하거나 빈 값으로 덮어쓰지 않아야 합니다.
+`selectedFingerprint`가 이전 저장값과 같으면 제목/날짜/이미지 셀 재쓰기를 생략할 수 있습니다.
