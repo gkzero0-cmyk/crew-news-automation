@@ -1041,6 +1041,16 @@ module.exports = async function handler(req, res) {
     staleSources.length === 0 &&
     degradedSources.length === 0;
 
+  // raw 게시글은 존재하지만 엄격 필터에서 대표 후보가 하나도 남지 않은 경우는
+  // 실제 "소식 없음"과 구분한다. 이 상태에서는 기존 정상 시트 값을 지우지 않는다.
+  const rawCandidateCount = results.reduce((sum,item) => sum + (item && item.ok ? Number(item.rawCount || 0) : 0), 0);
+  const suspiciousEmpty = Boolean(crew && !selected && rawCandidateCount > 0 && reliableEmpty);
+  const healthStatus =
+    failures.length || auxiliaryFailures.length || staleSources.length || degradedSources.length ? 'degraded' :
+    selected ? 'healthy' :
+    suspiciousEmpty ? 'suspicious_empty' : 'no_news';
+  const preservePrevious = healthStatus === 'degraded' || healthStatus === 'suspicious_empty';
+
   // 후보가 비었는데 일부 방송국/보조 검색이 실패했다면 "소식 없음"이 아니라 조회 실패다.
   // 200 + 빈 후보를 반환하면 Apps Script가 기존 정상 소식을 지울 수 있으므로 오류 응답으로 보존시킨다.
   if (
@@ -1059,7 +1069,9 @@ module.exports = async function handler(req, res) {
       auxiliaryFailed: auxiliaryFailures.length,
       staleSources: staleSources.length,
       degradedSources: degradedSources.length,
-      preservePrevious: true
+      preservePrevious: true,
+      healthStatus: 'degraded',
+      rawCandidateCount
     });
   }
 
@@ -1085,7 +1097,12 @@ module.exports = async function handler(req, res) {
     auxiliaryFailed: auxiliaryFailures.length,
     staleSources: staleSources.length,
     degradedSources: degradedSources.length,
-    reliableEmpty,
+    reliableEmpty: reliableEmpty && !suspiciousEmpty,
+    suspiciousEmpty,
+    healthStatus,
+    preservePrevious,
+    rawCandidateCount,
+    selectedFingerprint: selected ? stableFingerprint(selected) : '',
     selected: selected ? {
       id: selected.id,
       station: selected._station,
@@ -1147,5 +1164,12 @@ module.exports._internals = {
   vodFallbackKey,
   imageSourceFor,
   applyFallbackImage,
-  mergePosts
+  mergePosts,
+  classifyHealth({selected=null,results=[],failures=[],auxiliaryFailures=[],staleSources=[],degradedSources=[]}={}) {
+    const reliableEmpty=!selected&&!failures.length&&!auxiliaryFailures.length&&!staleSources.length&&!degradedSources.length;
+    const rawCandidateCount=results.reduce((sum,item)=>sum+(item&&item.ok?Number(item.rawCount||0):0),0);
+    const suspiciousEmpty=Boolean(!selected&&rawCandidateCount>0&&reliableEmpty);
+    const healthStatus=failures.length||auxiliaryFailures.length||staleSources.length||degradedSources.length?'degraded':selected?'healthy':suspiciousEmpty?'suspicious_empty':'no_news';
+    return {healthStatus,suspiciousEmpty,preservePrevious:healthStatus==='degraded'||healthStatus==='suspicious_empty',rawCandidateCount};
+  }
 };
