@@ -399,6 +399,7 @@ async function findVodFallbackUncached(post, stations, req) {
   if (!post || post.imageUrl || !Array.isArray(stations) || !stations.length) return null;
   const base = requestBase(req);
   const debugVod = /(?:^|[?&])debug_vod=1(?:&|$)/.test(String(req && req.url || ''));
+  const debugRows = [];
   let best = null;
   for (const station of stations.slice(0, 8)) {
     try {
@@ -420,6 +421,9 @@ async function findVodFallbackUncached(post, stations, req) {
           const vodDate = dateOnly(vod.publishedAt);
           if (vodDate && (!oldestDate || vodDate < oldestDate)) oldestDate = vodDate;
           const score = vodMatchScore(post, vod);
+          if (debugVod && vodDate && Math.abs(Date.parse((post.activityDate || dateOnly(post.publishedAt)) + 'T00:00:00+09:00') - Date.parse(vodDate + 'T00:00:00+09:00')) <= 86400000) {
+            debugRows.push({id:vod.id,title:vod.title,publishedAt:vod.publishedAt,score,imageUrl:vod.imageUrl || ''});
+          }
           if (score < 0 || (best && best.score >= score)) continue;
           best = {score, vod, station};
           if (debugVod) console.log('[crew-vod-candidate]', JSON.stringify({
@@ -439,6 +443,7 @@ async function findVodFallbackUncached(post, stations, req) {
       if (best && best.score >= 14) break;
     } catch (_) {}
   }
+  if (debugVod) post._vodDebug = {...(post._vodDebug || {}),rows:debugRows,best:best ? {score:best.score,station:best.station,vod:best.vod} : null};
   if (!best || best.score < 10) return null;
 
   let resolvedVod = best.vod;
@@ -448,10 +453,12 @@ async function findVodFallbackUncached(post, stations, req) {
         station:best.station, mode:'vod-detail', title_no:String(resolvedVod.id)
       });
       const {status, body:data} = await invokeCrewNews(req, detailParams);
-      if (debugVod) console.log('[crew-vod-detail]', JSON.stringify({
-        postId:post.id, vodId:resolvedVod.id, status,
-        ok:Boolean(data && data.ok), imageUrl:data && data.vod && data.vod.imageUrl || ''
-      }));
+      if (debugVod) {
+        post._vodDebug = {
+          ...(post._vodDebug || {}),
+          detail:{vodId:resolvedVod.id,status,ok:Boolean(data && data.ok),imageUrl:data && data.vod && data.vod.imageUrl || ''}
+        };
+      }
       if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
         resolvedVod = {...resolvedVod, ...data.vod, vodUrl:resolvedVod.vodUrl || data.vod.vodUrl || ''};
       }
@@ -765,7 +772,8 @@ module.exports = async function handler(req, res) {
       fallbackVodUrl: selected.fallbackVodUrl || '',
       fingerprint: stableFingerprint(selected),
       representativeTier: selected.representativeTier,
-      isCrewLeader: selected.isCrewLeader
+      isCrewLeader: selected.isCrewLeader,
+      ...(requestUrl.searchParams.get('debug_vod') === '1' ? {debugVod:selected._vodDebug || null} : {})
     } : null,
     results
   });
