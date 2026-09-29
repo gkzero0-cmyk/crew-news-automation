@@ -1,6 +1,7 @@
 'use strict';
 
 const crewNewsHandler=require('./crew-news.js');
+const crewNewsInternals=crewNewsHandler._internals || {};
 
 const CREW_BY_LEADER = Object.freeze({
   yjkim5500: '조적단',
@@ -175,32 +176,76 @@ function formatKstDate(date) {
   return pick('year') + '-' + pick('month') + '-' + pick('day');
 }
 
-function resolveActivityDate(raw = '', publishedAt = '') {
+function resolveActivityDateInfo(raw = '', publishedAt = '') {
   const text = String(raw || '').replace(/\s+/g, ' ');
   const baseMs = parseTime(publishedAt);
-  if (!baseMs) return '';
+  if (!baseMs) return {date:'',source:'none'};
 
-  // 명시된 실제 활동일을 최우선한다. "9월 30일부터"도 9/30으로 처리한다.
-  let match = text.match(/(?:(20\d{2})\s*년\s*)?(1[0-2]|0?[1-9])\s*월\s*(3[01]|[12]?\d)\s*일(?:부터|에|날)?/);
-  if (match) {
-    const base = new Date(baseMs);
-    const baseYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Seoul', year: 'numeric' }).format(base));
-    const year = Number(match[1] || baseYear);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
+  const baseDate = formatKstDate(new Date(baseMs));
+  const baseYear = Number(baseDate.slice(0,4));
+
+  function validDate(year, month, day) {
     const candidate = new Date(Date.UTC(year, month - 1, day, 3, 0, 0));
-    if (candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day) return formatKstDate(candidate);
+    if (
+      candidate.getUTCFullYear() !== year ||
+      candidate.getUTCMonth() !== month - 1 ||
+      candidate.getUTCDate() !== day
+    ) return '';
+    return formatKstDate(candidate);
   }
 
-  // 게시 시각(KST)을 기준으로 오늘/내일/모레를 계산한다.
-  // "3박 4일", "3~4일", "4일 동안" 같은 기간 숫자는 이 경로에 들어오지 않는다.
+  function nearestYear(month, day) {
+    const baseAt = Date.parse(baseDate + 'T00:00:00+09:00');
+    const candidates = [baseYear - 1, baseYear, baseYear + 1]
+      .map(year => ({year,date:validDate(year,month,day)}))
+      .filter(row => row.date)
+      .map(row => ({
+        ...row,
+        distance:Math.abs(Date.parse(row.date + 'T00:00:00+09:00') - baseAt)
+      }))
+      .sort((a,b)=>a.distance-b.distance);
+    return candidates[0] || null;
+  }
+
+  let match = text.match(/(?:^|[^0-9])(20\d{2})[-/.](1[0-2]|0?[1-9])[-/.](3[01]|[12]?\d)(?=$|[^0-9])/);
+  if (match) {
+    const date = validDate(Number(match[1]),Number(match[2]),Number(match[3]));
+    if (date) return {date,source:'explicit-iso'};
+  }
+
+  match = text.match(/(?:(20\d{2})\s*년\s*)?(1[0-2]|0?[1-9])\s*월\s*(3[01]|[12]?\d)\s*일(?:부터|에|날)?/);
+  if (match) {
+    const row = match[1]
+      ? {year:Number(match[1]),date:validDate(Number(match[1]),Number(match[2]),Number(match[3]))}
+      : nearestYear(Number(match[2]),Number(match[3]));
+    if (row && row.date) return {date:row.date,source:'explicit-korean'};
+  }
+
+  const compactRe = /(?:^|[^0-9])(1[0-2]|0?[1-9])([/.])(3[01]|[12]?\d)(?=$|[^0-9])/g;
+  while ((match = compactRe.exec(text))) {
+    const month=Number(match[1]);
+    const day=Number(match[3]);
+    const around=text.slice(Math.max(0,match.index-14),Math.min(text.length,match.index+match[0].length+18));
+    if (/\d+\s*박|\d+\s*일간|\d+\s*승|\d+\s*패|세트|스코어|분의|\d+\s*명|\d+\s*개|\d+\s*킬/i.test(around)) continue;
+    const row=nearestYear(month,day);
+    if (row && row.date) {
+      return {date:row.date,source:match[2] === '.' ? 'explicit-dot' : 'explicit-slash'};
+    }
+  }
+
   const relative = /모레/.test(text) ? 2 : /내일/.test(text) ? 1 : /오늘/.test(text) ? 0 : null;
   if (relative !== null) {
-    const baseDate = formatKstDate(new Date(baseMs));
-    const [y, m, d] = baseDate.split('-').map(Number);
-    return formatKstDate(new Date(Date.UTC(y, m - 1, d + relative, 3, 0, 0)));
+    const [y,m,d] = baseDate.split('-').map(Number);
+    return {
+      date:formatKstDate(new Date(Date.UTC(y,m-1,d+relative,3,0,0))),
+      source:'relative'
+    };
   }
-  return '';
+  return {date:'',source:'none'};
+}
+
+function resolveActivityDate(raw = '', publishedAt = '') {
+  return resolveActivityDateInfo(raw,publishedAt).date;
 }
 
 function activityPublishedAt(dateOnly, publishedAt) {
@@ -271,8 +316,12 @@ function strictCrewPost(post, crew, station) {
   // 이렇게 하면 후보 판정은 통과하면서 zero-width 문자를 전혀 쓰지 않는다.
   const compatibilityTitle = crew + ' ' + displaySummary;
   const manualActivityDate = MANUAL_ACTIVITY_DATE[crew] && MANUAL_ACTIVITY_DATE[crew][id] || '';
-  const parsedActivityDate = resolveActivityDate(sourceTitle + '\n' + body, post.publishedAt);
+  const parsedActivity = resolveActivityDateInfo(sourceTitle + '\n' + body, post.publishedAt);
+  const parsedActivityDate = parsedActivity.date;
   const resolvedActivityDate = manualActivityDate || parsedActivityDate;
+  const activityDateSource = manualActivityDate
+    ? 'manual'
+    : (parsedActivityDate ? parsedActivity.source : 'published');
   const eventPublishedAt = (crew === '천타버스' && id === '208075141')
     ? '2026-09-26 18:00:00'
     : activityPublishedAt(resolvedActivityDate, post.publishedAt);
@@ -284,6 +333,7 @@ function strictCrewPost(post, crew, station) {
     publishedAt: eventPublishedAt,
     sourcePublishedAt: post.publishedAt,
     activityDate: resolvedActivityDate || String(post.publishedAt || '').slice(0, 10),
+    activityDateSource,
     contents: crew + ' ' + summary + '\n' + body,
     strictCrew: crew,
     strictActivity: summary,
@@ -382,7 +432,7 @@ function vodMatchScore(post, vod) {
 }
 
 const VOD_FALLBACK_TTL_MS = 24 * 60 * 60 * 1000;
-const VOD_NEGATIVE_TTL_MS = 6 * 60 * 60 * 1000;
+const VOD_NEGATIVE_TTL_MS = 12 * 60 * 60 * 1000;
 const vodFallbackCache = new Map();
 const vodFallbackInflight = new Map();
 
@@ -395,16 +445,41 @@ function trimVodFallbackCache() {
   for (const [key] of oldest) vodFallbackCache.delete(key);
 }
 
+function vodDetailConsistent(listVod, detailVod, station) {
+  if (!listVod || !detailVod) return false;
+  if (String(listVod.id || '') !== String(detailVod.id || '')) return false;
+  if (detailVod.authorId && String(detailVod.authorId) !== String(station)) return false;
+  if (!detailVod.imageUrl) return false;
+
+  const clean = value => String(value || '').toLowerCase()
+    .replace(/\[[^\]]*\]/g,' ')
+    .replace(/[^가-힣a-z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  const a=clean(listVod.title);
+  const b=clean(detailVod.title);
+  if (!a || !b) return true;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+
+  const tokensA=new Set(a.split(' ').filter(token=>token.length>=2));
+  const shared=b.split(' ').filter(token=>token.length>=2 && tokensA.has(token));
+  return shared.length >= 1;
+}
+
 async function findVodFallbackUncached(post, stations, req) {
   if (!post || post.imageUrl || !Array.isArray(stations) || !stations.length) return null;
 
   let best = null;
-  for (const station of stations.slice(0, 8)) {
+  const startedAt=Date.now();
+  const maxWorkMs=8500;
+  for (const station of stations.slice(0, 4)) {
+    if (Date.now() - startedAt > maxWorkMs) break;
     try {
       const targetDate = post.activityDate || dateOnly(post.publishedAt);
-      const maxPages = 6;
+      const maxPages = 4;
 
       for (let page = 1; page <= maxPages; page += 1) {
+        if (Date.now() - startedAt > maxWorkMs) break;
         const params = new URLSearchParams({
           station, mode:'vods', vod_type:'review', page:String(page), per_page:'20'
         });
@@ -450,7 +525,10 @@ async function findVodFallbackUncached(post, stations, req) {
         station:best.station, mode:'vod-detail', title_no:String(resolvedVod.id)
       });
       const {status, body:data} = await invokeCrewNews(req, detailParams);
-      if (status >= 200 && status < 300 && data && data.ok === true && data.vod) {
+      if (
+        status >= 200 && status < 300 && data && data.ok === true && data.vod &&
+        vodDetailConsistent(resolvedVod,data.vod,best.station)
+      ) {
         resolvedVod = {
           ...resolvedVod,
           ...data.vod,
@@ -467,7 +545,9 @@ async function findVodFallbackUncached(post, stations, req) {
   return {
     fallbackImageUrl: resolvedVod.imageUrl,
     fallbackSheetImageUrl: resolvedVod.sheetImageUrl || resolvedVod.imageUrl,
-    fallbackImageSource: best.station === stations[0] ? 'leader_vod' : 'member_vod',
+    fallbackImageSource:
+      best.station === (LEADER_BY_CREW[post.strictCrew] || stations[0])
+        ? 'leader_vod' : 'member_vod',
     fallbackVodUrl: resolvedVod.vodUrl || best.vod.vodUrl || ''
   };
 }
@@ -580,7 +660,7 @@ function setBatchNoStore(res){
 module.exports = async function handler(req, res) {
   // 응답 자체에 빌드 식별자를 노출해 Apps Script가 실제 최신 Production 함수를
   // 호출하는지 상태 시트에서 즉시 검증할 수 있게 한다.
-  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.2-server');
+  res.setHeader('X-Crew-News-Policy', 'crew-automation-v1.3-server');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
   const requestUrl = new URL(req.url || '/', 'https://chunbong.local');
@@ -625,6 +705,7 @@ module.exports = async function handler(req, res) {
           const extraFetch = await invokeCrewNews(req, extraParams);
           if (extraFetch.status >= 200 && extraFetch.status < 300 && extraFetch.body && extraFetch.body.ok === true) {
             rawPosts = mergePosts(rawPosts, extraFetch.body.posts);
+            if (extraFetch.body.stale === true || extraFetch.body.menuError) extraSearchFailed = true;
           } else {
             extraSearchFailed = true;
           }
@@ -638,6 +719,9 @@ module.exports = async function handler(req, res) {
         station,
         ok: true,
         authenticated: Boolean(body.authenticated),
+        stale: Boolean(body.stale),
+        snapshotAt: body.snapshotAt || '',
+        metadataDegraded: Boolean(body.menuError),
         count: posts.length,
         rawCount: rawPosts.length,
         strictFiltered: Boolean(crew),
@@ -671,11 +755,40 @@ module.exports = async function handler(req, res) {
       return Number(Boolean(b.isCrewLeader)) - Number(Boolean(a.isCrewLeader));
     });
     selected = candidates[0] || null;
+
+    if (
+      selected &&
+      (selected.extractionComplete === false || !selected.imageUrl) &&
+      typeof crewNewsInternals.verifyPublicPost === 'function'
+    ) {
+      try {
+        const verification = await crewNewsInternals.verifyPublicPost(
+          selected._station,
+          selected.id,
+          req
+        );
+        selected.publicVerification = verification
+          ? String(verification.reason || (verification.verified ? 'verified' : 'unverified'))
+          : 'unavailable';
+        if (
+          verification && verification.verified &&
+          !selected.imageUrl && verification.imageUrl
+        ) {
+          selected.imageUrl = verification.imageUrl;
+          selected.sheetImageUrl = verification.sheetImageUrl || verification.imageUrl;
+          selected.imageSource = 'public_post';
+        }
+      } catch (_) {
+        selected.publicVerification = 'unavailable';
+      }
+    }
+
     // 대표 소식 선정은 VOD 조회와 분리한다. VOD/썸네일 보조 조회 실패가
     // 이미 검증된 대표 소식 전체를 500으로 만들지 않도록 한다.
     if (selected && !selected.imageUrl) {
       const orderedStations = [
         ...new Set([
+          selected._station,
           LEADER_BY_CREW[crew],
           ...stations
         ].filter(Boolean))
@@ -712,21 +825,33 @@ module.exports = async function handler(req, res) {
 
   const failures = results.filter(item => !item.ok);
   const auxiliaryFailures = results.filter(item => item && item.ok && item.extraSearchFailed);
-  const reliableEmpty = !selected && failures.length === 0 && auxiliaryFailures.length === 0;
+  const staleSources = results.filter(item => item && item.ok && item.stale);
+  const degradedSources = results.filter(item => item && item.ok && item.metadataDegraded);
+  const reliableEmpty =
+    !selected &&
+    failures.length === 0 &&
+    auxiliaryFailures.length === 0 &&
+    staleSources.length === 0 &&
+    degradedSources.length === 0;
 
   // 후보가 비었는데 일부 방송국/보조 검색이 실패했다면 "소식 없음"이 아니라 조회 실패다.
   // 200 + 빈 후보를 반환하면 Apps Script가 기존 정상 소식을 지울 수 있으므로 오류 응답으로 보존시킨다.
-  if (crew && !selected && (failures.length > 0 || auxiliaryFailures.length > 0)) {
+  if (
+    crew && !selected &&
+    (failures.length > 0 || auxiliaryFailures.length > 0 || staleSources.length > 0 || degradedSources.length > 0)
+  ) {
     setBatchNoStore(res);
     return res.status(503).json({
       ok: false,
       complete: false,
       error: 'crew_news_incomplete',
-      policyVersion: 'crew-automation-v1.2-server',
+      policyVersion: 'crew-automation-v1.3-server',
       strictCrew: crew,
       requested: stations.length,
       failed: failures.length,
       auxiliaryFailed: auxiliaryFailures.length,
+      staleSources: staleSources.length,
+      degradedSources: degradedSources.length,
       preservePrevious: true
     });
   }
@@ -739,14 +864,20 @@ module.exports = async function handler(req, res) {
   else setBatchPublicCache(res,{browser:30,cdn:60,stale:120});
   return res.status(failures.length === results.length ? 502 : 200).json({
     ok: failures.length < results.length,
-    complete: failures.length === 0 && auxiliaryFailures.length === 0,
-    policyVersion: 'crew-automation-v1.2-server',
+    complete:
+      failures.length === 0 &&
+      auxiliaryFailures.length === 0 &&
+      staleSources.length === 0 &&
+      degradedSources.length === 0,
+    policyVersion: 'crew-automation-v1.3-server',
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
     succeeded: results.length - failures.length,
     failed: failures.length,
     auxiliaryFailed: auxiliaryFailures.length,
+    staleSources: staleSources.length,
+    degradedSources: degradedSources.length,
     reliableEmpty,
     selected: selected ? {
       id: selected.id,
@@ -761,6 +892,10 @@ module.exports = async function handler(req, res) {
       publishedAt: selected.publishedAt,
       sourcePublishedAt: selected.sourcePublishedAt || selected.publishedAt,
       activityDate: selected.activityDate || String(selected.publishedAt || '').slice(0, 10),
+      activityDateSource: selected.activityDateSource || 'published',
+      publicVerification:
+        selected.publicVerification ||
+        (selected.extractionComplete === false ? 'not_checked' : 'not_required'),
       imageUrl: selected.imageUrl || '',
       sheetImageUrl: selected.sheetImageUrl || '',
       imageSource: selected.imageSource || imageSourceFor(selected),
@@ -782,7 +917,9 @@ module.exports._internals = {
   strictCrewPost,
   parseTime,
   resolveActivityDate,
+  resolveActivityDateInfo,
   activityPublishedAt,
+  vodDetailConsistent,
   stableFingerprint,
   displayDateFor,
   finalDisplayText,

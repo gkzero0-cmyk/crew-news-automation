@@ -108,8 +108,20 @@ const POST_IMAGE_HOSTS = new Set([
   'stimg.sooplive.com','stimg.sooplive.co.kr','stimg.afreecatv.com',
   'res.sooplive.com','res.sooplive.co.kr',
   'liveimg.sooplive.com','liveimg.sooplive.co.kr',
-  'vodimg.sooplive.com','vodimg.sooplive.co.kr'
+  'vodimg.sooplive.com','vodimg.sooplive.co.kr',
+  'videoimg.sooplive.com','videoimg.sooplive.co.kr'
 ]);
+
+function isTrustedSoopImageUrl(url='') {
+  try {
+    const parsed = new URL(absoluteHttps(url));
+    return parsed.protocol === 'https:' &&
+      POST_IMAGE_HOSTS.has(parsed.hostname.toLowerCase()) &&
+      !/(?:profile|avatar|favicon|logo|thumb_profile|channel_logo|bj_logo)/i.test(parsed.pathname);
+  } catch (_) {
+    return false;
+  }
+}
 
 function looksLikeContentImage(url = '') {
   try {
@@ -207,6 +219,141 @@ async function firstJson(urls, headers) {
   throw failure;
 }
 
+function schemaError(kind, detail='') {
+  const error = new Error('soop_schema_mismatch:' + kind + (detail ? ':' + detail : ''));
+  error.code = 'soop_schema_mismatch';
+  error.kind = kind;
+  return error;
+}
+
+function requireRows(payload, kind) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.data)) {
+    throw schemaError(kind, 'missing_data_array');
+  }
+  const rows = payload.data;
+  if (!rows.length) return rows;
+
+  const idKeys = kind === 'vod'
+    ? ['title_no','titleNo','no']
+    : ['title_no','titleNo','post_no','postNo','article_no','articleNo','no'];
+  const dateKeys = ['reg_date','regDate','created_at','createdAt','write_date'];
+  let valid = 0;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const id = String(first(row, idKeys) || '').replace(/\D/g,'');
+    const date = safeText(first(row, dateKeys), 80);
+    if (id && date) valid += 1;
+  }
+  if (valid / rows.length < 0.6) throw schemaError(kind, 'row_shape_changed');
+  return rows;
+}
+
+function metaContent(html, property) {
+  const tags = String(html || '').match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const keyMatch = tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i);
+    if (!keyMatch || String(keyMatch[1]).toLowerCase() !== String(property).toLowerCase()) continue;
+    const contentMatch = tag.match(/\bcontent\s*=\s*["']([^"']+)["']/i);
+    if (!contentMatch) continue;
+    return contentMatch[1]
+      .replace(/&amp;/g,'&')
+      .replace(/&quot;/g,'"')
+      .replace(/&#39;/g,"'")
+      .trim();
+  }
+  return '';
+}
+
+function visiblePageText(html='') {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi,' ')
+    .replace(/<style[\s\S]*?<\/style>/gi,' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi,' ')
+    .replace(/<br\s*\/?>/gi,'\n')
+    .replace(/<\/p>/gi,'\n')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/&nbsp;/gi,' ')
+    .replace(/&amp;/gi,'&')
+    .replace(/&quot;/gi,'"')
+    .replace(/&#39;/gi,"'")
+    .replace(/[ \t]+/g,' ')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
+
+const POST_VERIFY_POSITIVE_TTL_MS = 12 * 60 * 60 * 1000;
+const POST_VERIFY_NEGATIVE_TTL_MS = 60 * 60 * 1000;
+const publicPostVerifyCache = new Map();
+
+async function verifyPublicPost(station, postId, req) {
+  const safeId = String(postId || '').replace(/\D/g,'');
+  if (!safeId) throw new Error('invalid_post_id');
+  const key = String(station) + '|' + safeId;
+  const cached = publicPostVerifyCache.get(key);
+  if (cached) {
+    const ttl = cached.value && cached.value.verified
+      ? POST_VERIFY_POSITIVE_TTL_MS : POST_VERIFY_NEGATIVE_TTL_MS;
+    if (Date.now() - cached.at < ttl) return cached.value;
+    publicPostVerifyCache.delete(key);
+  }
+
+  const url = 'https://www.sooplive.com/station/' + encodeURIComponent(station) + '/post/' + safeId;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6500);
+  let value;
+  try {
+    const response = await fetch(url, {
+      redirect:'follow',
+      signal:controller.signal,
+      headers:{...BROWSER_HEADERS,'Accept':'text/html,application/xhtml+xml'}
+    });
+    const html = await response.text();
+    if (!response.ok) {
+      value = {verified:false,status:response.status,reason:'http_' + response.status};
+    } else {
+      const text = visiblePageText(html);
+      const canonical = metaContent(html,'og:url') || '';
+      const pageTitle = metaContent(html,'og:title') || '';
+      const rawImage = absoluteHttps(metaContent(html,'og:image') || '');
+      const imageUrl = rawImage && looksLikeContentImage(rawImage) ? rawImage : '';
+      const lowerHtml = html.toLowerCase();
+      const idMatched =
+        canonical.includes('/post/' + safeId) ||
+        html.includes('/post/' + safeId) ||
+        html.includes('"' + safeId + '"');
+      const stationToken = '/station/' + String(station).toLowerCase();
+      const stationMatched =
+        canonical.toLowerCase().includes(stationToken) ||
+        lowerHtml.includes(stationToken);
+      value = {
+        verified:Boolean(idMatched && stationMatched),
+        status:response.status,
+        reason:idMatched && stationMatched ? 'public_page_match' : 'identity_not_confirmed',
+        canonical,
+        pageTitle:safeText(pageTitle,500),
+        imageUrl,
+        sheetImageUrl:proxyImageUrl(req,imageUrl),
+        textSample:safeText(text,2500)
+      };
+    }
+  } catch (error) {
+    value = {
+      verified:false,
+      status:0,
+      reason:String(error && error.name === 'AbortError' ? 'timeout' : error && error.message || error)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  publicPostVerifyCache.set(key,{at:Date.now(),value});
+  if (publicPostVerifyCache.size > 120) {
+    const oldest=[...publicPostVerifyCache.entries()].sort((a,b)=>a[1].at-b[1].at)[0];
+    if (oldest) publicPostVerifyCache.delete(oldest[0]);
+  }
+  return value;
+}
+
 async function fetchVodDetail(titleNo, req) {
   const id = String(titleNo || '').replace(/\D/g, '');
   if (!id) throw new Error('invalid_vod_id');
@@ -235,7 +382,8 @@ async function fetchVodDetail(titleNo, req) {
       throw error;
     }
     const data=parsed.data;
-    const thumb=absoluteHttps(first(data,['thumb','thumbnail','thumb_url','thumbnail_url']) || '');
+    const rawThumb=absoluteHttps(first(data,['thumb','thumbnail','thumb_url','thumbnail_url']) || '');
+    const thumb=rawThumb && isTrustedSoopImageUrl(rawThumb) ? rawThumb : '';
     return {
       id,
       title:safeText(first(data,['title','title_name']),500),
@@ -253,7 +401,8 @@ async function fetchMenu(station, headers) {
   const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
   try {
     const result = await firstJson(urls, headers);
-    const rows = Array.isArray(result.data && result.data.board) ? result.data.board : [];
+    if (!result.data || !Array.isArray(result.data.board)) throw schemaError('menu','missing_board_array');
+    const rows = result.data.board;
     const byNo = new Map();
     for (const row of rows) {
       const no = String(first(row, ['bbsNo', 'bbs_no', 'boardNo', 'board_no']) || '');
@@ -289,7 +438,7 @@ async function fetchVodRows(station, {type='review', page=1, perPage=12}={}) {
   const params = new URLSearchParams({page:String(page),per_page:String(perPage),orderby:'reg_date'});
   const urls = SOOP_VOD_HOSTS.map(host => `${host}/api/${encodeURIComponent(station)}/vods/${safeType}?${params}`);
   const result = await firstJson(urls, {Referer:`https://www.sooplive.com/station/${station}/vod/${safeType}`});
-  return Array.isArray(result.data && result.data.data) ? result.data.data : [];
+  return requireRows(result.data, 'vod');
 }
 
 async function fetchVods(station, req, options={}) {
@@ -436,7 +585,7 @@ module.exports = async function handler(req, res) {
   const urls = SOOP_BOARD_HOSTS.map(host => `${host}/api/${encodeURIComponent(station)}/board/?${params.toString()}`);
   try {
     const result = await firstJson(urls, headers);
-    const rows = Array.isArray(result.data && result.data.data) ? result.data.data : [];
+    const rows = requireRows(result.data, 'board');
     const posts = rows.map(row => normalizePost(row, station, menu.byNo, req));
     const debug = requestUrl.searchParams.get('debug') === '1';
     if(cookie || forceRefresh)setNoStore(res);
@@ -492,5 +641,9 @@ module.exports._internals = {
   normalizePost,
   summarizeGenericPostTitle,
   normalizeVod,
-  fetchVods
+  fetchVods,
+  fetchVodDetail,
+  verifyPublicPost,
+  requireRows,
+  isTrustedSoopImageUrl
 };
