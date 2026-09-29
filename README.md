@@ -54,3 +54,16 @@ Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` q
 
 
 <!-- Deployment trigger note: refresh Production after v1.6 fingerprint write-decision merge. -->
+
+
+## Apps Script 백업
+
+실제 Google Sheet 자동화 소스는 `apps-script/Code.gs`에 백업합니다.
+
+- `previous_fingerprint`를 배치 API에 전달
+- `skip_unchanged`이면 뉴스/이미지 셀 쓰기 생략
+- `preserve_previous`이면 기존 정상값 유지
+- 정상적인 `no_news`에서만 기존 소식/이미지 제거
+- 숨김 `자동화 상태` 시트에 `Fingerprint / UpdateAction / HealthStatus` 진단값 기록
+
+Google Apps Script 프로젝트가 GitHub와 자동 동기화되는 구조는 아니므로, 실제 Code.gs를 변경한 경우 이 백업도 함께 갱신해야 합니다.
