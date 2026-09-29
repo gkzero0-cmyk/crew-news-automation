@@ -215,5 +215,8 @@ assert.ok(appsScriptSource.includes("updateAction === 'skip_unchanged'"),'Apps S
 assert.ok(appsScriptSource.includes("payload.complete === true && payload.reliableEmpty === true"),'Apps Script must only clear on reliable no_news');
 assert.ok(appsScriptSource.includes("writeAction: hadDisplay ? 'clear_no_news' : 'skip_no_news'"),'Apps Script must expose no_news clear/skip diagnostics');
 assert.ok(appsScriptSource.includes("['Fingerprint', 'UpdateAction', 'HealthStatus']"),'Apps Script must expose diagnostic status columns');
+assert.ok(appsScriptSource.includes("selected.sourcePublishedAt || selected.publishedAt || selected.activityDate"),'Apps Script status must prefer original source publish time');
+assert.ok(appsScriptSource.includes("setValue('원문게시일')"),'Apps Script must label the status timestamp as original post time');
+assert.ok(appsScriptSource.includes('server-single-source-v5+fingerprint-v3'),'Apps Script policy marker must track the source-time fix');
 
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);

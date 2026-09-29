@@ -307,7 +307,7 @@ function setAutomationState_(state, lastRun) {
 
     }
 
-    sheet.getRange('A14:B14').setValues([['PolicyVersion', 'server-single-source-v5+fingerprint-v2']]);
+    sheet.getRange('A14:B14').setValues([['PolicyVersion', 'server-single-source-v5+fingerprint-v3']]);
 
   } catch (e) {
 
@@ -605,7 +605,7 @@ function refreshOneCrew_(mainSheet, crew) {
       changed: false,
       apiFailed: payload.complete !== true,
       author: selected.author || selected.memberName || '',
-      publishedAt: selected.publishedAt || selected.activityDate || '',
+      publishedAt: selected.sourcePublishedAt || selected.publishedAt || selected.activityDate || '',
       newsText: displayText,
       postUrl: selected.postUrl || '',
       imageUrl: selected.imageUrl || '',
@@ -630,7 +630,7 @@ function refreshOneCrew_(mainSheet, crew) {
       changed: false,
       apiFailed: payload.complete !== true,
       author: selected.author || selected.memberName || '',
-      publishedAt: selected.publishedAt || selected.activityDate || '',
+      publishedAt: selected.sourcePublishedAt || selected.publishedAt || selected.activityDate || '',
       newsText: displayText,
       postUrl: selected.postUrl || '',
       imageUrl: selected.imageUrl || '',
@@ -668,8 +668,8 @@ function refreshOneCrew_(mainSheet, crew) {
     changed: true,
     apiFailed: payload.complete !== true,
     author: selected.author || selected.memberName || '',
-    // 상태 시트의 게시일도 서버의 실제 활동일 기준 값을 우선한다.
-    publishedAt: selected.publishedAt || selected.activityDate || '',
+    // 상태 시트는 실제 원문 업로드 시각(sourcePublishedAt)을 기록하고, 메인 소식의 날짜는 displayText/activityDate에 맡긴다.
+    publishedAt: selected.sourcePublishedAt || selected.publishedAt || selected.activityDate || '',
     newsText: displayText,
     postUrl: selected.postUrl || '',
     imageUrl: selected.imageUrl || '',
@@ -1275,6 +1275,11 @@ function writeHeaderTimestamp_(sheet, now) {
 
 
 function ensureStatusDiagnosticsColumns_(sheet) {
+  // E열은 활동일이 아니라 원문 게시글의 실제 업로드 시각을 기록한다.
+  if (String(sheet.getRange('E1').getDisplayValue() || '').trim() !== '원문게시일') {
+    sheet.getRange('E1').setValue('원문게시일');
+  }
+
   const requiredColumns = 15;
   if (sheet.getMaxColumns() < requiredColumns) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredColumns - sheet.getMaxColumns());
