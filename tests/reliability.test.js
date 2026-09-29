@@ -182,4 +182,15 @@ assert.strictEqual(batch.imageSourceFor({imageSource:'post_member',imageUrl:'htt
 assert.strictEqual(batch.imageSourceFor({fallbackVodUrl:'https://vod.sooplive.com/player/1',imageUrl:'https://example.com/vod.jpg'}),'vod');
 assert.strictEqual(batch.imageSourceFor({imageUrl:''}),'none');
 
+const health=batch.classifyHealth;
+assert.deepStrictEqual(health({selected:{id:'1'},results:[{ok:true,rawCount:10}]}),{healthStatus:'healthy',suspiciousEmpty:false,preservePrevious:false,rawCandidateCount:10});
+assert.deepStrictEqual(health({results:[{ok:true,rawCount:0}]}),{healthStatus:'no_news',suspiciousEmpty:false,preservePrevious:false,rawCandidateCount:0});
+assert.deepStrictEqual(health({results:[{ok:true,rawCount:10}]}),{healthStatus:'suspicious_empty',suspiciousEmpty:true,preservePrevious:true,rawCandidateCount:10});
+assert.deepStrictEqual(health({results:[{ok:false,rawCount:0}],failures:[{station:'x'}]}),{healthStatus:'degraded',suspiciousEmpty:false,preservePrevious:true,rawCandidateCount:0});
+
+// fingerprint는 시트 쓰기 생략 판단에 사용할 수 있도록 동일 입력에 안정적이어야 한다.
+const fingerprintFixture={id:'208458625',strictCrew:'천타버스',strictActivity:'더헌터 사냥대결',activityDate:'2026-09-30',publishedAt:'2026-09-30 01:45:38',imageUrl:'https://example.com/a.png',imageSource:'post_self'};
+assert.strictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture}));
+assert.notStrictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture,imageUrl:'https://example.com/b.png'}));
+
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
