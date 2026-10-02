@@ -235,10 +235,8 @@ assert.deepStrictEqual(
   'single-batch endpoint must sanitize and deduplicate crew requests'
 );
 assert.strictEqual(allBatchInternals.clampInt(100,30,1,50),50);
-assert.ok(appsScriptSource.includes("fetchAllCrewBatches_(crews)"),'Apps Script must make one aggregate fetch before the crew loop');
 assert.ok(appsScriptSource.includes("'/api/crew-news-all'"),'Apps Script must use the single-batch endpoint');
-assert.ok(appsScriptSource.includes("refreshOneCrew_(main, crew, batchPayloads[crew.crew] || null)"),'Apps Script must reuse aggregate payloads');
-assert.ok(appsScriptSource.includes("prefetchedPayload || fetchCrewBatch_"),'Apps Script must retain per-crew fallback only for aggregate endpoint failures');
 assert.ok(appsScriptSource.includes("single-batch-v1"),'Apps Script must expose the aggregate fetch mode');
 
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
+

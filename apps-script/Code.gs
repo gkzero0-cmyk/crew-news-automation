@@ -26,6 +26,8 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.0',
+
   MAIN_SHEET: '신생 종겜 크루',
 
   CONFIG_SHEET: '자동화 설정',
@@ -227,9 +229,11 @@ function refreshCrewNews() {
 
     // 정상 경로에서는 8개 크루를 단일 Vercel 함수 호출로 가져온다.
     // 집계 endpoint 자체가 실패한 경우에만 기존 크루별 호출로 폴백한다.
+    const diagnostics = { batchRequests: 0, fallbackRequests: 0, batchReceived: false };
     let batchPayloads = {};
     try {
-      batchPayloads = fetchAllCrewBatches_(crews);
+      batchPayloads = fetchAllCrewBatches_(crews, diagnostics);
+      diagnostics.batchReceived = true;
     } catch (batchError) {
       batchPayloads = {};
     }
@@ -240,7 +244,7 @@ function refreshCrewNews() {
 
       try {
 
-        const result = refreshOneCrew_(main, crew, batchPayloads[crew.crew] || null);
+        const result = refreshOneCrew_(main, crew, batchPayloads[crew.crew] || null, diagnostics);
 
         runResults.push(result);
 
@@ -284,7 +288,8 @@ function refreshCrewNews() {
 
     }
 
-    setAutomationState_('ACTIVE', new Date());
+    diagnostics.outcome = hardFailure ? 'completed_with_errors' : 'completed';
+    setAutomationState_('ACTIVE', new Date(), diagnostics);
 
   } finally {
 
@@ -296,7 +301,7 @@ function refreshCrewNews() {
 
 
 
-function setAutomationState_(state, lastRun) {
+function setAutomationState_(state, lastRun, diagnostics) {
 
   try {
 
@@ -317,7 +322,21 @@ function setAutomationState_(state, lastRun) {
     }
 
     sheet.getRange('A14:B14').setValues([['PolicyVersion', 'server-single-source-v5+fingerprint-v3+single-batch-v1']]);
-    sheet.getRange('A16:B16').setValues([['FetchMode', 'single-batch-v1']]);
+    // Only a completed refresh can attest its actual request path. Installation is not evidence.
+    if (lastRun && diagnostics) {
+      const fetchMode = diagnostics.fallbackRequests
+        ? (diagnostics.batchReceived ? 'single-batch-v1+per-crew-fallback' : 'per-crew-fallback')
+        : 'single-batch-v1';
+      sheet.getRange('A16:B22').setValues([
+        ['FetchMode', fetchMode],
+        ['ScriptVersion', CREW_AUTOMATION.SCRIPT_VERSION],
+        ['APIBase', CREW_AUTOMATION.API_BASE],
+        ['FetchRequestCount', diagnostics.batchRequests + diagnostics.fallbackRequests],
+        ['FallbackRequestCount', diagnostics.fallbackRequests],
+        ['RunCompletedAt', formatStatusDate_(lastRun)],
+        ['RunOutcome', diagnostics.outcome]
+      ]);
+    }
 
   } catch (e) {
 
@@ -474,7 +493,7 @@ function readStatusCutoffs_(sheet) {
 
 
 
-function refreshOneCrew_(mainSheet, crew, prefetchedPayload) {
+function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
   const checkedAt = new Date();
   const newsRange = mainSheet.getRange(crew.newsCell);
   const imageRange = mainSheet.getRange(crew.imageCell);
@@ -485,7 +504,7 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload) {
 
   const stations = crew.members.map(function(m) { return m.station; });
   const previousFingerprint = getCrewFingerprint_(crew);
-  const payload = prefetchedPayload || fetchCrewBatch_(stations, crew, previousFingerprint);
+  const payload = prefetchedPayload || fetchCrewBatch_(stations, crew, previousFingerprint, diagnostics);
   const serverPolicy = String(payload && payload.policyVersion || '').trim();
   const results = Array.isArray(payload.results) ? payload.results : [];
   const failedStations = results.filter(function(r) { return !r || !r.ok; });
@@ -697,7 +716,7 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload) {
   };
 }
 
-function fetchAllCrewBatches_(crews) {
+function fetchAllCrewBatches_(crews, diagnostics) {
   const requests = (crews || []).map(function(crew) {
     return {
       crew: crew.crew,
@@ -706,6 +725,7 @@ function fetchAllCrewBatches_(crews) {
     };
   });
 
+  if (diagnostics) diagnostics.batchRequests += 1;
   const response = UrlFetchApp.fetch(CREW_AUTOMATION.API_BASE + '/api/crew-news-all', {
     method: 'post',
     contentType: 'application/json',
@@ -739,7 +759,7 @@ function fetchAllCrewBatches_(crews) {
 }
 
 
-function fetchCrewBatch_(stations, crew, previousFingerprint) {
+function fetchCrewBatch_(stations, crew, previousFingerprint, diagnostics) {
   let url = CREW_AUTOMATION.API_BASE + '/api/crew-news-batch?stations=' +
     encodeURIComponent(stations.join(',')) +
     '&crew=' + encodeURIComponent((crew && crew.crew) || '') +
@@ -751,6 +771,7 @@ function fetchCrewBatch_(stations, crew, previousFingerprint) {
     url += '&previous_fingerprint=' + encodeURIComponent(previous);
   }
 
+  if (diagnostics) diagnostics.fallbackRequests += 1;
   const response = UrlFetchApp.fetch(url, {
     method: 'get',
     muteHttpExceptions: true,
