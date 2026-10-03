@@ -39,4 +39,5 @@ for (const header of ['대표선정이유','이미지선정이유','근거수','
 assert.match(code, /new_posts_seen_no_new_event/);
 assert.match(code, /stale_14d_plus/);
 
+// This suite intentionally covers both event-source diagnostics and sheet-visible diagnostics.
 console.log('crew diagnostic observability regression: ok');
