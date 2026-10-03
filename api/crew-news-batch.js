@@ -183,6 +183,13 @@ function detectActivity(raw = '') {
   return '';
 }
 
+function isRetrospectiveActivityPost(raw = '') {
+  const text = String(raw || '').replace(/\s+/g, ' ');
+  const completionCue = /(?:한국\s*도착|집에\s*(?:갑|가|왔|도착)|다녀왔|여행(?:이|은|을)?[^.!?\n]{0,40}(?:끝|마무리|오랜만|좋았|즐거웠))/i;
+  const followupCue = /(?:오늘|내일|모레)?[^.!?\n]{0,30}(?:후기|썰|리뷰)(?:\s*(?:뱅|방송))?/i;
+  return completionCue.test(text) && followupCue.test(text);
+}
+
 function deriveCompetitiveDisplaySummary(sourceTitle = '', crew = '', activity = '') {
   if (!/(?:사냥\s*대결|대결|대항전|\bvs\.?\b|매치)/i.test(String(activity) + ' ' + String(sourceTitle))) return '';
 
@@ -206,13 +213,31 @@ function deriveCompetitiveDisplaySummary(sourceTitle = '', crew = '', activity =
 
 function sameRepresentativeActivity(a, b) {
   if (!a || !b) return false;
-  const aActivity = normalize(a.strictActivity || a.displaySummary || '');
-  const bActivity = normalize(b.strictActivity || b.displaySummary || '');
-  if (!aActivity || !bActivity || aActivity !== bActivity) return false;
+  const aRawActivity = String(a.strictActivity || a.displaySummary || '');
+  const bRawActivity = String(b.strictActivity || b.displaySummary || '');
+  const aActivity = normalize(aRawActivity);
+  const bActivity = normalize(bRawActivity);
+  if (!aActivity || !bActivity) return false;
 
   const aDate = String(a.activityDate || '').slice(0,10);
   const bDate = String(b.activityDate || '').slice(0,10);
-  return !aDate || !bDate || aDate === bDate;
+  const sameDate = !aDate || !bDate || aDate === bDate;
+  if (!sameDate) return false;
+  if (aActivity === bActivity) return true;
+
+  // Broader equivalence is only safe when both candidates have a concrete
+  // matching date. It prevents a later generic member description from
+  // replacing the stronger representative of the same crew event.
+  if (!aDate || !bDate) return false;
+
+  const aFamily = activityFamily(aRawActivity);
+  const bFamily = activityFamily(bRawActivity);
+  if (aFamily && aFamily === bFamily && aFamily === 'contest') return true;
+
+  const genericPair = new Set([aActivity, bActivity]);
+  if (genericPair.size === 2 && genericPair.has('콘텐츠') && genericPair.has('합방')) return true;
+
+  return false;
 }
 
 function compareRepresentativeCandidates(a, b) {
@@ -381,7 +406,8 @@ function strictCrewPost(post, crew, station) {
   const conditionalOrAspirational = /(?:하고\s*싶|가고\s*싶|해보고\s*싶|되면|된다면|성공하면|달성하면|목표\s*달성|공약|도와\s*달|도와주|부탁|희망|바라|예정\s*희망)/i.test(activityText);
   const confirmedSchedule = /(?:확정|진행(?:합니다|해요|예정|하기로)?|참여(?:합니다|해요|예정)?|합방(?:합니다|해요|예정)?|회의(?:합니다|해요|예정)?|여행(?:갑니다|가요|예정)?|할\s*예정|하기로|일정(?:은|이|:)?|오늘|내일|모레|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}[\/.]\d{1,2})/i.test(activityText);
   const downstreamOnly = /(?:후기|결과|정산|당첨|상품|경품|배송|수령|보상|감사합니다|잘\s*다녀왔)/i.test(activityText) && !confirmedSchedule;
-  const contextualActivity = (conditionalOrAspirational && !confirmedSchedule) || downstreamOnly ? '' : detectedActivity;
+  const retrospectiveOnly = detectedActivity === '여행' && isRetrospectiveActivityPost(activityText);
+  const contextualActivity = (conditionalOrAspirational && !confirmedSchedule) || downstreamOnly || retrospectiveOnly ? '' : detectedActivity;
   const activity = override || contextualActivity || (leader && boardCrew && /특집/i.test(sourceTitle) ? '추석특집' : '');
 
   if (!activity) return null;
