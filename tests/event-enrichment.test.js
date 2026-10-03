@@ -47,6 +47,17 @@ assert.strictEqual(jaraUpcoming.displaySummary,'자라섬 VRC 콘텐츠');
 assert.strictEqual(jaraUpcoming.activityDate,'2026-10-04');
 assert.strictEqual(jaraUpcoming.imageUrl,'','generic chat emoticon must be stripped from the representative event');
 
+const jaraUpcomingMultiline = enrichment.synthesizeCrewEvent([
+  {id:'208785083',station:'seh0305',authorId:'seh0305',title:'오누레 공쥬ㅣ',publishedAt:'2026-10-03 17:16:45',boardName:'으네으 공쥐',contents:[
+    '숙제왕창하고 내일 오겠습니다',
+    '내일 드릴말씀도 있어서',
+    '좀 일찍 왔다가',
+    '저녁에 자라섬 vrc컨텐츠까지 가겠습니다:)'
+  ].join('\n'),imageUrl:'https://res.sooplive.com/images/chat/emoticon/big/6.png'}
+], '자라섬', 'dstv');
+assert.ok(jaraUpcomingMultiline);
+assert.strictEqual(jaraUpcomingMultiline.activityDate,'2026-10-04','a nearby preceding 내일 cue should apply to the following crew activity line');
+
 const jail = enrichment.synthesizeCrewEvent([
   {id:'208308549',station:'amanemay',authorId:'amanemay',title:'26-09-28 오뱅꽁 오후 1시 장지수용소 점호',publishedAt:'2026-09-28 12:41:35',boardName:'🔔| 방송 ON',contents:'장지수용소 점호 오늘은 점호가 있는 날 수용소 친구들이랑 만나는 날',imageUrl:''}
 ], '장지수용소', 'iamquaddurup');
@@ -58,7 +69,7 @@ const unverifiedJailVod = enrichment.attachBestImage(jail, [], [
 assert.strictEqual(unverifiedJailVod.imageUrl, '', 'generic VOD title must require explicit event verification');
 const jailWithImage = enrichment.attachBestImage(jail, [], [
   {id:'208336221',station:'iamquaddurup',title:'장지수 [무수]',publishedAt:'2026-09-28 20:04:59',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=vod&fit=sheet',verifiedEventMedia:true}
-], 'iamquaddurup');
+], '장지수용소');
 assert.strictEqual(jailWithImage.imageSource, 'leader_vod_same_day');
 assert.strictEqual(jailWithImage.fallbackVodUrl, 'https://vod.sooplive.com/player/208336221');
 
