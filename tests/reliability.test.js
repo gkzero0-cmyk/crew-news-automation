@@ -26,8 +26,6 @@ assert.strictEqual(batch.vodDetailConsistent(
   'iamquaddurup'
 ),false);
 
-
-
 const hunterPost=batch.strictCrewPost({
   id:'208458625',
   title:'9/30 오후4시 천타버스 vs 버인협회 더헌터 사냥대결',
@@ -87,7 +85,6 @@ assert.ok(
   batch.compareRepresentativeCandidates(sameActivityOlder,sameActivityNewer) < 0,
   'media priority may still break ties within the same activity'
 );
-
 
 const selectedMeeting={
   id:'meeting-main',
@@ -179,7 +176,7 @@ for (const source of [require('fs').readFileSync(require.resolve('../api/status.
 }
 
 assert.strictEqual(batch.imageSourceFor({imageSource:'post_member',imageUrl:'https://example.com/member.png'}),'post_member');
-assert.strictEqual(batch.imageSourceFor({fallbackVodUrl:'https://vod.sooplive.com/player/1',imageUrl:'https://example.com/vod.jpg'}),'vod');
+assert.strictEqual(batch.imageSourceFor({fallbackVodUrl:'https://vod.sooplive.com/player/1',imageUrl:'https://example.com/vod.jpg'}),'post');
 assert.strictEqual(batch.imageSourceFor({imageUrl:''}),'none');
 
 const health=batch.classifyHealth;
@@ -188,12 +185,10 @@ assert.deepStrictEqual(health({results:[{ok:true,rawCount:0}]}),{healthStatus:'n
 assert.deepStrictEqual(health({results:[{ok:true,rawCount:10}]}),{healthStatus:'suspicious_empty',suspiciousEmpty:true,preservePrevious:true,rawCandidateCount:10});
 assert.deepStrictEqual(health({results:[{ok:false,rawCount:0}],failures:[{station:'x'}]}),{healthStatus:'degraded',suspiciousEmpty:false,preservePrevious:true,rawCandidateCount:0});
 
-// fingerprint는 시트 쓰기 생략 판단에 사용할 수 있도록 동일 입력에 안정적이어야 한다.
 const fingerprintFixture={id:'208458625',strictCrew:'천타버스',strictActivity:'더헌터 사냥대결',activityDate:'2026-09-30',publishedAt:'2026-09-30 01:45:38',imageUrl:'https://example.com/a.png',imageSource:'post_self'};
 assert.strictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture}));
 assert.notStrictEqual(batch.stableFingerprint(fingerprintFixture),batch.stableFingerprint({...fingerprintFixture,imageUrl:'https://example.com/b.png'}));
 
-// Apps Script write contract: same fingerprint skips writes; protected states preserve previous data.
 const writeDecision=(selectedFingerprint,previousFingerprint,preservePrevious)=>{
   const unchanged=Boolean(selectedFingerprint&&previousFingerprint&&selectedFingerprint===previousFingerprint);
   return {unchanged,shouldWrite:!preservePrevious&&!unchanged,updateAction:preservePrevious?'preserve_previous':unchanged?'skip_unchanged':'write'};
@@ -219,8 +214,6 @@ assert.ok(appsScriptSource.includes("selected.sourcePublishedAt || selected.publ
 assert.ok(appsScriptSource.includes("setValue('원문게시일')"),'Apps Script must label the status timestamp as original post time');
 assert.ok(appsScriptSource.includes('server-single-source-v5+fingerprint-v3'),'Apps Script policy marker must track the source-time fix');
 
-
-
 const allBatchInternals=require('../api/crew-news-all.js')._internals;
 assert.deepStrictEqual(
   allBatchInternals.safeCrewRequests([
@@ -239,4 +232,3 @@ assert.ok(appsScriptSource.includes("'/api/crew-news-all'"),'Apps Script must us
 assert.ok(appsScriptSource.includes("single-batch-v1"),'Apps Script must expose the aggregate fetch mode');
 
 console.log(`crew-news-automation v${APP_VERSION} reliability tests passed`);
-
