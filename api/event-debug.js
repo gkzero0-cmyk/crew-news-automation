@@ -1,0 +1,7 @@
+'use strict';
+const crewNewsHandler=require('../internal/crew-news.js');
+const enrichment=require('../lib/event-enrichment.js');
+const LEADERS={'조적단':'yjkim5500','강씨세가':'rkdakstlr911','장지수용소':'iamquaddurup','자라섬':'dstv'};
+function capture(){let code=200,body=null;return{state:()=>({code,body}),status(c){code=c;return this},json(v){body=v;return v},setHeader(){}}}
+async function invoke(req,url){const r=capture();await crewNewsHandler({...req,method:'GET',url},r);return r.state();}
+module.exports=async function(req,res){const u=new URL(req.url,'https://x');const crew=u.searchParams.get('crew')||'';const stations=[...new Set(String(u.searchParams.get('stations')||'').split(',').filter(Boolean).concat(enrichment.AUXILIARY_VALIDATORS[crew]||[]))];const posts=[];for(const station of stations){const r=await invoke(req,`/api/crew-news?station=${encodeURIComponent(station)}&per_page=30&start_date=2026-09-19&refresh=1`);for(const p of (r.body&&r.body.posts)||[])posts.push({...p,station});}const event=enrichment.synthesizeCrewEvent(posts,crew,LEADERS[crew]||'');return res.status(200).json({crew,stations,postCount:posts.length,event});};
