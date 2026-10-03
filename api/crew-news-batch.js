@@ -26,12 +26,22 @@ function captureRes() {
     state,
     setHeader(name,value){ state.headers[String(name).toLowerCase()]=value; },
     status(code){ state.statusCode=Number(code)||200; return this; },
-    json(body){ state.body=body; return body; }
+    json(body){ state.body=body; return body; },
+    end(payload){
+      if (payload != null && state.body == null) {
+        try { state.body=JSON.parse(String(payload)); } catch (_) { state.body=payload; }
+      }
+      return payload;
+    }
   };
 }
 
 async function invoke(handler, req, url) {
-  const fakeReq={...req,method:'GET',url};
+  const fakeReq={
+    method:'GET',
+    url,
+    headers:{...((req&&req.headers)||{})}
+  };
   const fakeRes=captureRes();
   await handler(fakeReq,fakeRes);
   return fakeRes.state;
@@ -169,7 +179,6 @@ async function enrichPayload(req, payload, requestUrl) {
   const fingerprint=core._internals.stableFingerprint(toCoreFingerprintInput(crew,enrichedEvent));
   const previousFingerprint=String(payload.previousFingerprint||'');
   const unchanged=Boolean(fingerprint&&previousFingerprint&&fingerprint===previousFingerprint);
-  const preservePrevious=Boolean(payload.preservePrevious);
 
   return {
     ...payload,
@@ -178,7 +187,7 @@ async function enrichPayload(req, payload, requestUrl) {
     preservePrevious:false,
     selectedFingerprint:fingerprint,
     unchanged,
-    shouldWrite:!preservePrevious&&!unchanged,
+    shouldWrite:!unchanged,
     updateAction:unchanged?'skip_unchanged':'write',
     selected:buildSelected(crew,enrichedEvent,fingerprint),
     eventClusterVersion:'event-cluster-v1'
