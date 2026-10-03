@@ -1,10 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
 const enrichment = require('../lib/event-enrichment.js');
+const batch = require('../api/crew-news-batch.js');
 
 const personalCrewMap = enrichment.synthesizeCrewEvent([
   {
@@ -31,29 +29,46 @@ assert.equal(
   'a crew-branded map played as a personal/two-person stream must not become official crew news because an old collab is mentioned in the body'
 );
 
-const externalInterviewRecap = enrichment.synthesizeCrewEvent([
-  {
+const externalInterviewPayload = {
+  ok: true,
+  complete: true,
+  preservePrevious: false,
+  healthStatus: 'healthy',
+  strictCrew: '장지수용소',
+  selected: {
     id: '208811011',
-    station: 'sunza1122',
-    authorId: 'sunza1122',
-    title: '장지수용소 포포입니다',
-    originalTitle: '장지수용소 포포입니다',
-    publishedAt: '2026-10-03 22:02:09',
-    boardName: '포포 일기장 👾',
-    contents: [
-      '장지수용소 면접',
-      '오늘 원태님 방송에서 면접 보고 왔습니다!',
-      '우리 장지수용소 다 잘 한거 같나용',
-      '방송 끝나고 원태님이 고기 사주셔서 맛있게 먹었습니다.',
-      '내일 집 도착하자마자 방송 잠깐 킬게용!!'
-    ].join('\n'),
+    summary: '면접',
+    displaySummary: '장지수용소 면접',
+    activityDate: '2026-10-04',
     imageUrl: 'https://stimg.sooplive.com/NORMAL_BBS/0/28636980/63361791032301700.jpeg'
-  }
-], '장지수용소', 'iamquaddurup');
+  },
+  results: [{
+    station: 'sunza1122',
+    ok: true,
+    posts: [{
+      id: '208811011',
+      originalTitle: '장지수용소 포포입니다',
+      title: '장지수용소 장지수용소 면접',
+      publishedAt: '2026-10-03 22:02:09',
+      contents: [
+        '장지수용소 면접',
+        '오늘 원태님 방송에서 면접 보고 왔습니다!',
+        '우리 장지수용소 다 잘 한거 같나용',
+        '방송 끝나고 원태님이 고기 사주셔서 맛있게 먹었습니다.',
+        '내일 집 도착하자마자 방송 잠깐 킬게용!!'
+      ].join('\n')
+    }]
+  }]
+};
 assert.equal(
-  externalInterviewRecap,
-  null,
-  'a member recap about appearing on another broadcaster\'s interview must not be promoted to an official crew event'
+  batch._internals.isExternalParticipationRecapSelected(externalInterviewPayload),
+  true,
+  'a completed appearance on another broadcaster should invalidate the core crew-event selection'
+);
+assert.equal(
+  batch._internals.shouldAttemptEnrichment(externalInterviewPayload),
+  true,
+  'an invalid external-participation selection must force raw-post re-evaluation even when it has an image'
 );
 
 const sameDayRollCall = enrichment.synthesizeCrewEvent([
@@ -80,98 +95,24 @@ assert.equal(
   'an unrelated later sentence containing 내일 must not move the event date to the next day'
 );
 
-function runImageResetScenario() {
-  const source = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8');
-  let imageCleared = false;
-  const currentUrl = 'https://www.sooplive.com/station/hwayang3/post/208597179';
-  const currentText = '강씨세가 - 강씨세가 미스테리 w. 화양 (10/1) 📌';
-  const oldFormula = '=IMAGE("https://old.example/anniversary.jpg",1)';
-  const props = {};
-
-  const newsRange = {
-    getDisplayValue: () => currentText,
-    getRichTextValue: () => ({getLinkUrl: () => currentUrl, getRuns: () => []}),
-    setRichTextValue: () => newsRange,
-    setHorizontalAlignment: () => newsRange,
-    setVerticalAlignment: () => newsRange
-  };
-  const imageRange = {
-    getFormula: () => oldFormula,
-    clearContent: () => { imageCleared = true; return imageRange; },
-    getRow: () => 26,
-    getNumRows: () => 1,
-    getColumn: () => 11,
-    getNumColumns: () => 1
-  };
-  const imageBlock = {
-    getRow: () => 26,
-    getNumRows: () => 7,
-    getColumn: () => 11,
-    getNumColumns: () => 4
-  };
-  const sheet = {
-    getRange: a1 => a1 === 'I4' ? newsRange : (a1 === 'K26:N32' ? imageBlock : imageRange),
-    getImages: () => []
-  };
-  const ctx = vm.createContext({
-    console, Date, JSON, Object, String, Array,
-    SpreadsheetApp: {
-      newTextStyle: () => ({setFontFamily(){return this;},setFontSize(){return this;},setBold(){return this;},setForegroundColor(){return this;},setUnderline(){return this;},build(){return {};}}),
-      newRichTextValue: () => ({setText(){return this;},setLinkUrl(){return this;},setTextStyle(){return this;},build(){return {};}})
-    },
-    PropertiesService: {getDocumentProperties: () => ({
-      getProperty: key => props[key] || '',
-      setProperty: (key, value) => { props[key] = value; },
-      deleteProperty: key => { delete props[key]; },
-      getKeys: () => Object.keys(props)
-    })}
-  });
-  vm.runInContext(source, ctx);
-  const crew = {
-    crew: '강씨세가',
-    newsCell: 'I4',
-    imageCell: 'K26',
-    imageRange: 'K26:N32',
-    color: '#dab04d',
-    members: [{station:'rkdakstlr911'}, {station:'hwayang3'}]
-  };
-  const payload = {
-    ok: true,
-    complete: true,
-    reliableEmpty: false,
-    preservePrevious: false,
-    healthStatus: 'healthy',
-    policyVersion: 'test-policy',
-    selectedFingerprint: 'new-fp',
-    shouldWrite: false,
-    unchanged: true,
-    updateAction: 'skip_unchanged',
-    results: [],
-    selected: {
-      id: '208597179',
-      station: 'hwayang3',
-      postUrl: currentUrl,
-      displayText: currentText,
-      displayDate: '10/1',
-      activityDate: '2026-10-01',
-      sourcePublishedAt: '2026-10-01 18:41:35',
-      imageUrl: '',
-      sheetImageUrl: '',
-      imageSource: 'none',
-      fingerprint: 'new-fp',
-      isCrewLeader: false
-    }
-  };
-  const result = ctx.refreshOneCrew_(sheet, crew, payload, {batchRequests:0,fallbackRequests:0});
-  return {imageCleared, result};
-}
-
-const reset = runImageResetScenario();
-assert.equal(
-  reset.imageCleared,
-  true,
-  'when a healthy verified new event has no suitable image, a stale image from the previous event must be cleared'
+const noImageSelected = batch._internals.buildSelected('강씨세가', {
+  id: '208597179',
+  station: 'hwayang3',
+  postUrl: 'https://www.sooplive.com/station/hwayang3/post/208597179',
+  activity: '미스테리',
+  displaySummary: '강씨세가 미스테리 w. 화양',
+  activityDate: '2026-10-01',
+  publishedAt: '2026-10-01 18:41:35',
+  sourcePublishedAt: '2026-10-01 18:41:35',
+  imageUrl: '',
+  sheetImageUrl: '',
+  imageSource: 'none'
+}, 'fp-no-image');
+assert.equal(noImageSelected.imageUrl, '', 'the canonical event should still report that it has no representative image');
+assert.match(
+  noImageSelected.sheetImageUrl,
+  /\/api\/blank-image$/,
+  'a healthy event with no suitable image must send an explicit blank sheet image so the current Apps Script replaces stale media'
 );
-assert.equal(reset.result.imageState, '이미지 없음');
 
 console.log('crew-news qualification/image reset regression: ok');
