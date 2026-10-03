@@ -29,6 +29,31 @@ assert.equal(
   'a crew-branded map played as a personal/two-person stream must not become official crew news because an old collab is mentioned in the body'
 );
 
+const externalSchedule = enrichment.synthesizeCrewEvent([
+  {
+    id: '208726499',
+    station: '8bibian8',
+    authorId: '8bibian8',
+    title: '10월 첫, 두번째주 일정입니당(추후 추가 수정예정)',
+    originalTitle: '10월 첫, 두번째주 일정입니당(추후 추가 수정예정)',
+    publishedAt: '2026-10-02 23:46:39',
+    boardName: '🔔방송일정🔔',
+    contents: [
+      '10월1일 목: 공겜업보 1/13, 별별랭킹, 의상공개',
+      '10월2일 금: 수용소 저녁밥 친구들, 피자시뮬레이터',
+      '10월3일: 황원태, 조경훈님 가을운동회 면접 + 마크녹화',
+      '10월4일: 장지수용소 버싯대(확정x)',
+      '10월5일: 100일'
+    ].join('\n'),
+    imageUrl: ''
+  }
+], '장지수용소', 'iamquaddurup');
+assert.equal(
+  externalSchedule,
+  null,
+  'a member personal schedule line for another broadcaster\'s interview must not become crew news when the crew is not named in that activity context'
+);
+
 const externalInterviewPayload = {
   ok: true,
   complete: true,
