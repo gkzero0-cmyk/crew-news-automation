@@ -397,7 +397,23 @@ async function fetchVodDetail(titleNo, req) {
   }
 }
 
+const MENU_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const menuCache = new Map();
+
+function menuCacheKey(station, headers = {}) {
+  return String(station) + '|' + (headers && headers.Cookie ? 'auth' : 'public');
+}
+
+function clearMenuCacheForTest() {
+  menuCache.clear();
+}
+
 async function fetchMenu(station, headers) {
+  const key = menuCacheKey(station, headers);
+  const cached = menuCache.get(key);
+  if (cached && Date.now() - cached.at < MENU_CACHE_TTL_MS) return cached.value;
+  if (cached) menuCache.delete(key);
+
   const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
   try {
     const result = await firstJson(urls, headers);
@@ -409,7 +425,13 @@ async function fetchMenu(station, headers) {
       const name = safeText(first(row, ['name', 'title', 'boardName', 'board_name']), 120);
       if (no && name) byNo.set(no, name);
     }
-    return { rows, byNo, source: result.url };
+    const value = { rows, byNo, source: result.url };
+    menuCache.set(key, { at: Date.now(), value });
+    if (menuCache.size > 120) {
+      const oldest = [...menuCache.entries()].sort((a,b) => a[1].at - b[1].at)[0];
+      if (oldest) menuCache.delete(oldest[0]);
+    }
+    return value;
   } catch (error) {
     return { rows: [], byNo: new Map(), source: '', error: String(error && error.message || error) };
   }
@@ -643,6 +665,9 @@ module.exports._internals = {
   normalizeVod,
   fetchVods,
   fetchVodDetail,
+  fetchMenu,
+  MENU_CACHE_TTL_MS,
+  clearMenuCacheForTest,
   verifyPublicPost,
   requireRows,
   isTrustedSoopImageUrl
