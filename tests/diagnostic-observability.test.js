@@ -32,7 +32,7 @@ assert.equal(leader.selectionReason, '크루장 공식공지');
 assert.equal(leader.evidenceCount, 1);
 
 const code = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
-assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.2'/);
+assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.3'/);
 for (const header of ['대표선정이유','이미지선정이유','근거수','근거작성자','진단플래그']) {
   assert.ok(code.includes(header), `Code.gs should expose ${header}`);
 }
