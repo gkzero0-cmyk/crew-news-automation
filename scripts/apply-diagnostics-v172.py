@@ -1,0 +1,157 @@
+from pathlib import Path
+import re
+
+# event-enrichment.js
+p=Path('lib/event-enrichment.js')
+s=p.read_text()
+marker="function synthesizeCrewEvent(posts=[], crew='', leaderStation='') {"
+helpers=r'''function uniqueEvidenceStations(rows=[]) {
+  return [...new Set((Array.isArray(rows)?rows:[])
+    .map(row=>String(row&&row.station||row&&row.authorId||'').trim())
+    .filter(Boolean))];
+}
+
+function uniqueEvidenceAuthors(rows=[]) {
+  return [...new Set((Array.isArray(rows)?rows:[])
+    .map(row=>String(row&&row.author||row&&row.station||row&&row.authorId||'').trim())
+    .filter(Boolean))];
+}
+
+function selectionReasonFor(rep, rows=[], leaderStation='') {
+  const stations=uniqueEvidenceStations(rows);
+  if (rep && rep.leader && rep.official) return '크루장 공식공지';
+  if (stations.length >= 2) return '크루원 다수 일치';
+  if (rep && rep.titleCrewMention && rep.titleActivityExplicit) return '제목 직접일치';
+  if (rep && rep.official) return '공식 공지 문맥';
+  if (rep && String(rep.station||'') === String(leaderStation||'')) return '크루장 활동 문맥';
+  return '크루 활동 문맥 일치';
+}
+
+'''+marker
+assert marker in s
+s=s.replace(marker,helpers,1)
+old="""  const displaySummary = makeDisplaySummary(crew,activity,winning.rows);\n  return {\n    id:String(rep.id||''),\n    station:String(rep.station||rep.authorId||''),"""
+new="""  const displaySummary = makeDisplaySummary(crew,activity,winning.rows);\n  const evidenceStations=uniqueEvidenceStations(winning.rows);\n  const evidenceAuthors=uniqueEvidenceAuthors(winning.rows);\n  return {\n    id:String(rep.id||''),\n    station:String(rep.station||rep.authorId||''),\n    author:String(rep.author||''),"""
+assert old in s
+s=s.replace(old,new,1)
+old2="""    imageSource:rep.imageUrl ? 'post_self' : 'none',\n    imagePostId:rep.imageUrl ? String(rep.id||'') : '',\n    imageSuitabilityScore:null,\n    representativeTier:rep.leader ? 1 : 2,"""
+new2="""    imageSource:rep.imageUrl ? 'post_self' : 'none',\n    imageSelectionReason:rep.imageUrl ? '대표 게시글 이미지' : '적합 이미지 없음',\n    imagePostId:rep.imageUrl ? String(rep.id||'') : '',\n    imageSuitabilityScore:null,\n    selectionReason:selectionReasonFor(rep,winning.rows,leaderStation),\n    evidenceCount:evidenceStations.length,\n    evidenceStations,\n    evidenceAuthors,\n    representativeTier:rep.leader ? 1 : 2,"""
+assert old2 in s
+s=s.replace(old2,new2,1)
+s=s.replace("if (event.imageUrl) return {...event};","if (event.imageUrl) return {...event,imageSelectionReason:event.imageSelectionReason||'대표 게시글 이미지'};",1)
+s=s.replace("return {...event,imageUrl:p.imageUrl,sheetImageUrl:p.sheetImageUrl||p.imageUrl,imageSource:'post_member',imagePostId:String(p.id||'')};","return {...event,imageUrl:p.imageUrl,sheetImageUrl:p.sheetImageUrl||p.imageUrl,imageSource:'post_member',imageSelectionReason:'같은 이벤트 크루원 이미지',imagePostId:String(p.id||'')};",1)
+s=s.replace("return {...event,imageUrl:v.imageUrl,sheetImageUrl:v.sheetImageUrl||v.imageUrl,imageSource:'leader_vod_same_day',imagePostId:'',fallbackVodUrl:v.vodUrl || (v.id?`https://vod.sooplive.com/player/${v.id}`:'')};","return {...event,imageUrl:v.imageUrl,sheetImageUrl:v.sheetImageUrl||v.imageUrl,imageSource:'leader_vod_same_day',imageSelectionReason:'같은 날짜 크루장 VOD',imagePostId:'',fallbackVodUrl:v.vodUrl || (v.id?`https://vod.sooplive.com/player/${v.id}`:'')};",1)
+s=s.replace("  return {...event};\n}\n\nfunction verifiedVodIdFor", "  return {...event,imageSelectionReason:event.imageSelectionReason||'적합 이미지 없음'};\n}\n\nfunction verifiedVodIdFor",1)
+p.write_text(s)
+
+# api/crew-news-batch.js
+p=Path('api/crew-news-batch.js')
+s=p.read_text()
+old="""    id:event.id,\n    station:event.station,\n    postUrl:event.postUrl,"""
+new="""    id:event.id,\n    station:event.station,\n    author:event.author||'',\n    postUrl:event.postUrl,"""
+assert old in s
+s=s.replace(old,new,1)
+old="""    imageSource:event.imageSource||'none',\n    imagePostId:event.imagePostId||'',\n    imageSuitabilityScore:event.imageSuitabilityScore ?? null,\n    imageRejected:false,"""
+new="""    imageSource:event.imageSource||'none',\n    imageSelectionReason:event.imageSelectionReason||((event.imageUrl||'')?'대표 게시글 이미지':'적합 이미지 없음'),\n    imagePostId:event.imagePostId||'',\n    imageSuitabilityScore:event.imageSuitabilityScore ?? null,\n    imageRejected:false,\n    selectionReason:event.selectionReason||'',\n    evidenceCount:Number(event.evidenceCount||0),\n    evidenceStations:Array.isArray(event.evidenceStations)?event.evidenceStations:[],\n    evidenceAuthors:Array.isArray(event.evidenceAuthors)?event.evidenceAuthors:[],"""
+assert old in s
+s=s.replace(old,new,1)
+p.write_text(s)
+
+# Apps Script
+p=Path('apps-script/Code.gs')
+s=p.read_text()
+s=s.replace("SCRIPT_VERSION: 'crew-apps-script-v1.7.1'","SCRIPT_VERSION: 'crew-apps-script-v1.7.2'",1)
+
+marker='function ensureStatusDiagnosticsColumns_(sheet) {'
+helpers=r'''function selectionReason_(selected) {
+  const explicit = String(selected && selected.selectionReason || '').trim();
+  if (explicit) return explicit;
+  if (selected && (selected.isCrewLeader === true || Number(selected.representativeTier) === 1)) return '크루장 대표';
+  if (String(selected && selected.publicVerification || '') === 'event_cluster') return '크루 활동 문맥 일치';
+  return '서버 대표 선정';
+}
+
+function imageSelectionReason_(selected) {
+  const explicit = String(selected && selected.imageSelectionReason || '').trim();
+  if (explicit) return explicit;
+  const source = String(selected && selected.imageSource || '').trim();
+  if (source === 'post_self') return '대표 게시글 이미지';
+  if (source === 'post_member') return '같은 이벤트 크루원 이미지';
+  if (source === 'leader_vod_same_day') return '같은 날짜 크루장 VOD';
+  if (isBlankImageDirective_(selected) || !String(selected && selected.imageUrl || '').trim()) return '적합 이미지 없음';
+  return '검증된 대표 이미지';
+}
+
+function evidenceAuthors_(selected, crew) {
+  let values = [];
+  if (selected && Array.isArray(selected.evidenceAuthors)) values = selected.evidenceAuthors.slice();
+  if (!values.length && selected && Array.isArray(selected.evidenceStations)) {
+    values = selected.evidenceStations.map(function(station) {
+      const member = (crew && crew.members || []).filter(function(row) { return String(row.station) === String(station); })[0];
+      return member ? member.name : station;
+    });
+  }
+  if (!values.length) {
+    const fallback = String(selected && (selected.author || selected.memberName) || '').trim();
+    if (fallback) values = [fallback];
+  }
+  return values.filter(Boolean).filter(function(value, index, array) { return array.indexOf(value) === index; }).join(', ');
+}
+
+function evidenceCount_(selected, crew) {
+  const explicit = Number(selected && selected.evidenceCount || 0);
+  if (explicit > 0) return explicit;
+  const authors = evidenceAuthors_(selected, crew);
+  return authors ? authors.split(',').length : (selected ? 1 : 0);
+}
+
+function newestResultPostMs_(results) {
+  let newest = 0;
+  (results || []).forEach(function(result) {
+    (result && result.posts || []).forEach(function(post) {
+      const date = parseKstDate_(post && post.publishedAt || '');
+      if (date && date.getTime() > newest) newest = date.getTime();
+    });
+  });
+  return newest;
+}
+
+function diagnosticFlag_(selected, results, checkedAt) {
+  const flags = [];
+  const now = checkedAt instanceof Date ? checkedAt : new Date();
+  const eventDate = parseKstDate_(selected && (selected.activityDate || selected.sourcePublishedAt || selected.publishedAt) || '');
+  if (eventDate && now.getTime() - eventDate.getTime() >= 14 * 24 * 60 * 60 * 1000) flags.push('stale_14d_plus');
+  const selectedPublished = parseKstDate_(selected && (selected.sourcePublishedAt || selected.publishedAt) || '');
+  const newestPostMs = newestResultPostMs_(results);
+  if (selectedPublished && newestPostMs > selectedPublished.getTime() + 24 * 60 * 60 * 1000) flags.push('new_posts_seen_no_new_event');
+  if (selected && (isBlankImageDirective_(selected) || !String(selected.imageUrl || '').trim())) flags.push('image_none');
+  return flags.join(', ');
+}
+
+'''+marker
+assert marker in s
+s=s.replace(marker,helpers,1)
+
+s=s.replace('  const requiredColumns = 15;','  const requiredColumns = 20;',1)
+old="""  const expected = ['Fingerprint', 'UpdateAction', 'HealthStatus'];\n  const headerRange = sheet.getRange(1, 13, 1, 3);\n  const current = headerRange.getDisplayValues()[0];\n  const matches = expected.every(function(value, index) { return current[index] === value; });\n  if (!matches) {\n    sheet.getRange(1, 12).copyTo(headerRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);\n    headerRange.setValues([expected]);\n  }\n}"""
+new="""  const expected = ['Fingerprint', 'UpdateAction', 'HealthStatus'];\n  const headerRange = sheet.getRange(1, 13, 1, 3);\n  const current = headerRange.getDisplayValues()[0];\n  const matches = expected.every(function(value, index) { return current[index] === value; });\n  if (!matches) {\n    sheet.getRange(1, 12).copyTo(headerRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);\n    headerRange.setValues([expected]);\n  }\n\n  const diagnosticHeaders = ['대표선정이유', '이미지선정이유', '근거수', '근거작성자', '진단플래그'];\n  const diagnosticHeaderRange = sheet.getRange(1, 16, 1, 5);\n  const diagnosticCurrent = diagnosticHeaderRange.getDisplayValues()[0];\n  const diagnosticMatches = diagnosticHeaders.every(function(value, index) { return diagnosticCurrent[index] === value; });\n  if (!diagnosticMatches) {\n    sheet.getRange(1, 15).copyTo(diagnosticHeaderRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);\n    diagnosticHeaderRange.setValues([diagnosticHeaders]);\n  }\n}"""
+assert old in s
+s=s.replace(old,new,1)
+
+pattern=r"(sourceType: selected\.sourceType \|\| '',\n\s*)(writeAction:)"
+repl=r"\1selectionReason: selectionReason_(selected),\n      imageSelectionReason: imageSelectionReason_(selected),\n      evidenceCount: evidenceCount_(selected, crew),\n      evidenceAuthors: evidenceAuthors_(selected, crew),\n      diagnosticFlag: diagnosticFlag_(selected, results, checkedAt),\n      \2"
+s,count=re.subn(pattern,repl,s)
+assert count >= 3, count
+
+old="""      sourceType: '허용 후보 없음',\n      imageState: '이미지 없음',\n      writeAction:"""
+new="""      sourceType: '허용 후보 없음',\n      imageState: '이미지 없음',\n      selectionReason: '허용 후보 없음',\n      imageSelectionReason: '적합 이미지 없음',\n      evidenceCount: 0,\n      evidenceAuthors: '',\n      diagnosticFlag: newestResultPostMs_(results) ? 'new_posts_seen_no_new_event' : 'no_recent_posts',\n      writeAction:"""
+assert old in s
+s=s.replace(old,new,1)
+
+s=s.replace('const old = sheet.getRange(row, 1, 1, 15).getValues()[0];','const old = sheet.getRange(row, 1, 1, 20).getValues()[0];',1)
+s=s.replace('sheet.getRange(row, 1, 1, 15).setValues([[','sheet.getRange(row, 1, 1, 20).setValues([[',1)
+old="""      has('healthStatus') ? result.healthStatus : (old[14] || '')\n\n    ]]);"""
+new="""      has('healthStatus') ? result.healthStatus : (old[14] || ''),\n      has('selectionReason') ? result.selectionReason : (old[15] || ''),\n      has('imageSelectionReason') ? result.imageSelectionReason : (old[16] || ''),\n      has('evidenceCount') ? result.evidenceCount : (old[17] || ''),\n      has('evidenceAuthors') ? result.evidenceAuthors : (old[18] || ''),\n      has('diagnosticFlag') ? result.diagnosticFlag : (old[19] || '')\n\n    ]]);"""
+assert old in s
+s=s.replace(old,new,1)
+p.write_text(s)
