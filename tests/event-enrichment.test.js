@@ -15,6 +15,11 @@ assert.strictEqual(gang.activityDate, '2026-10-01');
 assert.strictEqual(gang.displaySummary, '강씨세가 미스테리 w. 화양');
 assert.strictEqual(gang.id, '208597179', 'specific collaborator post should represent the event');
 
+const unrelatedGangVod = enrichment.attachBestImage(gang, [], [
+  {id:'x',station:'rkdakstlr911',title:'강만식 개인방송',publishedAt:'2026-10-01 20:00:00',imageUrl:'https://videoimg.sooplive.com/unrelated.jpg'}
+], 'rkdakstlr911');
+assert.strictEqual(unrelatedGangVod.imageUrl, '', 'same-day but unrelated leader VOD must not be used');
+
 const jojuk = enrichment.synthesizeCrewEvent([
   {id:'208659119',station:'yjkim5500',authorId:'yjkim5500',title:'오늘 방송은요오',publishedAt:'2026-10-02 05:04:58',boardName:'⭐ 공지 사항',contents:'조적단 콘텐츠 진석이 첫 컨텐츠 조적단과 함께하는 놀라운 토요일',imageUrl:''},
   {id:'208675943',station:'thswlstjr666',authorId:'thswlstjr666',title:'오늘은 드디어 VRC 컨텐츠 놀숲합니다',publishedAt:'2026-10-02 14:07:45',boardName:'✨ 공 지 사 항 ✨',contents:'드디어 진행하는 놀숲입니다! 조적단 친구들 이랑 같이 진행합니다',imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/4/16029964/75051790917609278.png',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=x&fit=sheet'}
@@ -36,8 +41,13 @@ const jail = enrichment.synthesizeCrewEvent([
   {id:'208308549',station:'amanemay',authorId:'amanemay',title:'26-09-28 오뱅꽁 오후 1시 장지수용소 점호',publishedAt:'2026-09-28 12:41:35',boardName:'🔔| 방송 ON',contents:'장지수용소 점호 오늘은 점호가 있는 날 수용소 친구들이랑 만나는 날',imageUrl:''}
 ], '장지수용소', 'iamquaddurup');
 assert.ok(jail);
+assert.strictEqual(enrichment.verifiedVodIdFor('장지수용소',jail),'208336221');
+const unverifiedJailVod = enrichment.attachBestImage(jail, [], [
+  {id:'208336221',station:'iamquaddurup',title:'장지수 [무수]',publishedAt:'2026-09-28 20:04:59',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x'}
+], 'iamquaddurup');
+assert.strictEqual(unverifiedJailVod.imageUrl, '', 'generic VOD title must require explicit event verification');
 const jailWithImage = enrichment.attachBestImage(jail, [], [
-  {id:'208336221',station:'iamquaddurup',title:'장지수 [무수]',publishedAt:'2026-09-28 20:04:59',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=vod&fit=sheet'}
+  {id:'208336221',station:'iamquaddurup',title:'장지수 [무수]',publishedAt:'2026-09-28 20:04:59',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=vod&fit=sheet',verifiedEventMedia:true}
 ], 'iamquaddurup');
 assert.strictEqual(jailWithImage.imageSource, 'leader_vod_same_day');
 assert.strictEqual(jailWithImage.fallbackVodUrl, 'https://vod.sooplive.com/player/208336221');
