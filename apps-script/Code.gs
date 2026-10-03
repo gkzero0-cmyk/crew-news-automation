@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.1',
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.2',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -580,6 +580,11 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       error: '',
       sourceType: '허용 후보 없음',
       imageState: '이미지 없음',
+      selectionReason: '허용 후보 없음',
+      imageSelectionReason: '적합 이미지 없음',
+      evidenceCount: 0,
+      evidenceAuthors: '',
+      diagnosticFlag: newestResultPostMs_(results) ? 'new_posts_seen_no_new_event' : 'no_recent_posts',
       writeAction: hadDisplay ? 'clear_no_news' : 'skip_no_news',
       fingerprint: '',
       serverPolicy: serverPolicy,
@@ -641,6 +646,11 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       imageState: clearImage ? '이미지 없음(셀 비움)' : (expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음')),
       error: payload.complete === true ? '' : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
       sourceType: selected.sourceType || '',
+      selectionReason: selectionReason_(selected),
+      imageSelectionReason: imageSelectionReason_(selected),
+      evidenceCount: evidenceCount_(selected, crew),
+      evidenceAuthors: evidenceAuthors_(selected, crew),
+      diagnosticFlag: diagnosticFlag_(selected, results, checkedAt),
       writeAction: 'skip_unchanged',
       fingerprint: selectedFingerprint || previousFingerprint,
       serverPolicy: serverPolicy,
@@ -666,6 +676,11 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       imageState: clearImage ? '이미지 없음(셀 비움)' : (expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음')),
       error: payload.complete === true ? '' : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
       sourceType: selected.sourceType || '',
+      selectionReason: selectionReason_(selected),
+      imageSelectionReason: imageSelectionReason_(selected),
+      evidenceCount: evidenceCount_(selected, crew),
+      evidenceAuthors: evidenceAuthors_(selected, crew),
+      diagnosticFlag: diagnosticFlag_(selected, results, checkedAt),
       writeAction: updateAction === 'write' ? 'skip_local_unchanged' : (updateAction || 'skip_local_unchanged'),
       fingerprint: selectedFingerprint || previousFingerprint,
       serverPolicy: serverPolicy,
@@ -713,7 +728,12 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       ? ''
       : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
     sourceType: selected.sourceType || '',
-    writeAction: serverSaysUnchanged ? 'repair_local_drift' : (updateAction || 'write'),
+    selectionReason: selectionReason_(selected),
+      imageSelectionReason: imageSelectionReason_(selected),
+      evidenceCount: evidenceCount_(selected, crew),
+      evidenceAuthors: evidenceAuthors_(selected, crew),
+      diagnosticFlag: diagnosticFlag_(selected, results, checkedAt),
+      writeAction: serverSaysUnchanged ? 'repair_local_drift' : (updateAction || 'write'),
     fingerprint: selectedFingerprint,
     serverPolicy: serverPolicy,
       healthStatus: healthStatus
@@ -1361,13 +1381,78 @@ function writeHeaderTimestamp_(sheet, now) {
 
 
 
+function selectionReason_(selected) {
+  const explicit = String(selected && selected.selectionReason || '').trim();
+  if (explicit) return explicit;
+  if (selected && (selected.isCrewLeader === true || Number(selected.representativeTier) === 1)) return '크루장 대표';
+  if (String(selected && selected.publicVerification || '') === 'event_cluster') return '크루 활동 문맥 일치';
+  return '서버 대표 선정';
+}
+
+function imageSelectionReason_(selected) {
+  const explicit = String(selected && selected.imageSelectionReason || '').trim();
+  if (explicit) return explicit;
+  const source = String(selected && selected.imageSource || '').trim();
+  if (source === 'post_self') return '대표 게시글 이미지';
+  if (source === 'post_member') return '같은 이벤트 크루원 이미지';
+  if (source === 'leader_vod_same_day') return '같은 날짜 크루장 VOD';
+  if (isBlankImageDirective_(selected) || !String(selected && selected.imageUrl || '').trim()) return '적합 이미지 없음';
+  return '검증된 대표 이미지';
+}
+
+function evidenceAuthors_(selected, crew) {
+  let values = [];
+  if (selected && Array.isArray(selected.evidenceAuthors)) values = selected.evidenceAuthors.slice();
+  if (!values.length && selected && Array.isArray(selected.evidenceStations)) {
+    values = selected.evidenceStations.map(function(station) {
+      const member = (crew && crew.members || []).filter(function(row) { return String(row.station) === String(station); })[0];
+      return member ? member.name : station;
+    });
+  }
+  if (!values.length) {
+    const fallback = String(selected && (selected.author || selected.memberName) || '').trim();
+    if (fallback) values = [fallback];
+  }
+  return values.filter(Boolean).filter(function(value, index, array) { return array.indexOf(value) === index; }).join(', ');
+}
+
+function evidenceCount_(selected, crew) {
+  const explicit = Number(selected && selected.evidenceCount || 0);
+  if (explicit > 0) return explicit;
+  const authors = evidenceAuthors_(selected, crew);
+  return authors ? authors.split(',').length : (selected ? 1 : 0);
+}
+
+function newestResultPostMs_(results) {
+  let newest = 0;
+  (results || []).forEach(function(result) {
+    (result && result.posts || []).forEach(function(post) {
+      const date = parseKstDate_(post && post.publishedAt || '');
+      if (date && date.getTime() > newest) newest = date.getTime();
+    });
+  });
+  return newest;
+}
+
+function diagnosticFlag_(selected, results, checkedAt) {
+  const flags = [];
+  const now = checkedAt instanceof Date ? checkedAt : new Date();
+  const eventDate = parseKstDate_(selected && (selected.activityDate || selected.sourcePublishedAt || selected.publishedAt) || '');
+  if (eventDate && now.getTime() - eventDate.getTime() >= 14 * 24 * 60 * 60 * 1000) flags.push('stale_14d_plus');
+  const selectedPublished = parseKstDate_(selected && (selected.sourcePublishedAt || selected.publishedAt) || '');
+  const newestPostMs = newestResultPostMs_(results);
+  if (selectedPublished && newestPostMs > selectedPublished.getTime() + 24 * 60 * 60 * 1000) flags.push('new_posts_seen_no_new_event');
+  if (selected && (isBlankImageDirective_(selected) || !String(selected.imageUrl || '').trim())) flags.push('image_none');
+  return flags.join(', ');
+}
+
 function ensureStatusDiagnosticsColumns_(sheet) {
   // E열은 활동일이 아니라 원문 게시글의 실제 업로드 시각을 기록한다.
   if (String(sheet.getRange('E1').getDisplayValue() || '').trim() !== '원문게시일') {
     sheet.getRange('E1').setValue('원문게시일');
   }
 
-  const requiredColumns = 15;
+  const requiredColumns = 20;
   if (sheet.getMaxColumns() < requiredColumns) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredColumns - sheet.getMaxColumns());
   }
@@ -1379,6 +1464,15 @@ function ensureStatusDiagnosticsColumns_(sheet) {
   if (!matches) {
     sheet.getRange(1, 12).copyTo(headerRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     headerRange.setValues([expected]);
+  }
+
+  const diagnosticHeaders = ['대표선정이유', '이미지선정이유', '근거수', '근거작성자', '진단플래그'];
+  const diagnosticHeaderRange = sheet.getRange(1, 16, 1, 5);
+  const diagnosticCurrent = diagnosticHeaderRange.getDisplayValues()[0];
+  const diagnosticMatches = diagnosticHeaders.every(function(value, index) { return diagnosticCurrent[index] === value; });
+  if (!diagnosticMatches) {
+    sheet.getRange(1, 15).copyTo(diagnosticHeaderRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    diagnosticHeaderRange.setValues([diagnosticHeaders]);
   }
 }
 
@@ -1406,7 +1500,7 @@ function writeStatus_(sheet, results) {
 
     if (!row) return;
 
-    const old = sheet.getRange(row, 1, 1, 15).getValues()[0];
+    const old = sheet.getRange(row, 1, 1, 20).getValues()[0];
 
     const checked = formatStatusDate_(result.checkedAt || new Date());
 
@@ -1416,7 +1510,7 @@ function writeStatus_(sheet, results) {
 
 
 
-    sheet.getRange(row, 1, 1, 15).setValues([[
+    sheet.getRange(row, 1, 1, 20).setValues([[
 
       result.crew,
 
@@ -1446,7 +1540,12 @@ function writeStatus_(sheet, results) {
 
       has('writeAction') ? result.writeAction : (old[13] || ''),
 
-      has('healthStatus') ? result.healthStatus : (old[14] || '')
+      has('healthStatus') ? result.healthStatus : (old[14] || ''),
+      has('selectionReason') ? result.selectionReason : (old[15] || ''),
+      has('imageSelectionReason') ? result.imageSelectionReason : (old[16] || ''),
+      has('evidenceCount') ? result.evidenceCount : (old[17] || ''),
+      has('evidenceAuthors') ? result.evidenceAuthors : (old[18] || ''),
+      has('diagnosticFlag') ? result.diagnosticFlag : (old[19] || '')
 
     ]]);
 
