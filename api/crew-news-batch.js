@@ -216,17 +216,32 @@ function sameRepresentativeActivity(a, b) {
 }
 
 function compareRepresentativeCandidates(a, b) {
+  const sameActivity = sameRepresentativeActivity(a, b);
+
+  // Different crew activities are ordered by freshness first. A leader post
+  // is only a representative-quality advantage, not permission to pin an
+  // older event above a newer confirmed activity from another member.
+  if (!sameActivity) {
+    const time =
+      parseTime(b.sourcePublishedAt || b.publishedAt) -
+      parseTime(a.sourcePublishedAt || a.publishedAt);
+    if (time) return time;
+
+    const tier = Number(a.representativeTier || 9) - Number(b.representativeTier || 9);
+    if (tier) return tier;
+
+    return Number(Boolean(b.isCrewLeader)) - Number(Boolean(a.isCrewLeader));
+  }
+
+  // Inside the same activity/date, keep the existing representative-quality
+  // preference so the best crew-wide post/image remains the chosen source.
   const tier = Number(a.representativeTier || 9) - Number(b.representativeTier || 9);
   if (tier) return tier;
 
-  // Media preference is only a tie-breaker inside the same activity.
-  // It must never pin an older event above a newer, different crew event.
-  if (sameRepresentativeActivity(a,b)) {
-    const mediaPriority =
-      Number(b.representativeMediaPriority || 0) -
-      Number(a.representativeMediaPriority || 0);
-    if (mediaPriority) return mediaPriority;
-  }
+  const mediaPriority =
+    Number(b.representativeMediaPriority || 0) -
+    Number(a.representativeMediaPriority || 0);
+  if (mediaPriority) return mediaPriority;
 
   const time =
     parseTime(b.sourcePublishedAt || b.publishedAt) -
