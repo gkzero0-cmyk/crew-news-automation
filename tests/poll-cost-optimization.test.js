@@ -24,11 +24,9 @@ async function main() {
       status: 200,
       url: String(url),
       text: async () => JSON.stringify({
-        data: {
-          board: [
-            { bbsNo: '123', name: '공지사항' }
-          ]
-        }
+        board: [
+          { bbsNo: '123', name: '공지사항' }
+        ]
       })
     };
   };
