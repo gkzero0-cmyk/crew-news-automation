@@ -3,6 +3,7 @@ const assert = require('assert');
 const enrichment = require('../lib/event-enrichment.js');
 
 assert.strictEqual(enrichment.isOfficialBoard('✨ 공 지 사 항 ✨'), true, 'spaced notice board must be normalized');
+assert.strictEqual(enrichment.isRepresentativeImageUrl('https://res.sooplive.com/images/chat/emoticon/big/6.png'), false, 'chat emoticons are not representative media');
 
 const gang = enrichment.synthesizeCrewEvent([
   {id:'208659971',station:'rkdakstlr911',authorId:'rkdakstlr911',title:'할말있어',publishedAt:'2026-10-02 05:34:12',boardName:'공지사항',contents:'오늘 낮 제갈금자 눙지 냉장고를 부탁해부터 그냥서버 +강씨세가 화양의 미스테리까지 봐주신 형님들 감사합니다',imageUrl:''},
@@ -36,6 +37,14 @@ const jara = enrichment.synthesizeCrewEvent([
 assert.ok(jara);
 assert.strictEqual(jara.displaySummary, '자라섬 피파 CK 합방');
 assert.strictEqual(jara.id, 'b');
+
+const jaraUpcoming = enrichment.synthesizeCrewEvent([
+  {id:'208785083',station:'seh0305',authorId:'seh0305',title:'오누레 공쥬ㅣ',publishedAt:'2026-10-03 17:16:45',boardName:'으네으 공쥐',contents:'내일 저녁에 자라섬 vrc컨텐츠까지 가겠습니다',imageUrl:'https://res.sooplive.com/images/chat/emoticon/big/6.png',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=emoji&fit=sheet'}
+], '자라섬', 'dstv');
+assert.ok(jaraUpcoming);
+assert.strictEqual(jaraUpcoming.displaySummary,'자라섬 VRC 콘텐츠');
+assert.strictEqual(jaraUpcoming.activityDate,'2026-10-04');
+assert.strictEqual(jaraUpcoming.imageUrl,'','generic chat emoticon must be stripped from the representative event');
 
 const jail = enrichment.synthesizeCrewEvent([
   {id:'208308549',station:'amanemay',authorId:'amanemay',title:'26-09-28 오뱅꽁 오후 1시 장지수용소 점호',publishedAt:'2026-09-28 12:41:35',boardName:'🔔| 방송 ON',contents:'장지수용소 점호 오늘은 점호가 있는 날 수용소 친구들이랑 만나는 날',imageUrl:''}
