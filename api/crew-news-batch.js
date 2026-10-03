@@ -37,11 +37,7 @@ function captureRes() {
 }
 
 async function invoke(handler, req, url) {
-  const fakeReq={
-    method:'GET',
-    url,
-    headers:{...((req&&req.headers)||{})}
-  };
+  const fakeReq={method:'GET',url,headers:{...((req&&req.headers)||{})}};
   const fakeRes=captureRes();
   await handler(fakeReq,fakeRes);
   return fakeRes.state;
@@ -74,10 +70,7 @@ function sameEvent(coreSelected,event) {
 
 async function collectRawPosts(req, stations, crew, forceRefresh) {
   const all=[];
-  const targets=[...new Set([
-    ...stations,
-    ...(enrichment.AUXILIARY_VALIDATORS[crew]||[])
-  ])];
+  const targets=[...new Set([...stations,...(enrichment.AUXILIARY_VALIDATORS[crew]||[])])];
   for (const station of targets) {
     const params=new URLSearchParams({station,per_page:'30',start_date:isoDaysAgo(14)});
     if (forceRefresh) params.set('refresh','1');
@@ -103,7 +96,7 @@ async function collectLeaderVods(req, leaderStation, activityDate) {
       try {
         const detail=await invoke(crewNewsHandler,req,`/api/crew-news?station=${encodeURIComponent(leaderStation)}&mode=vod-detail&title_no=${encodeURIComponent(vod.id)}`);
         const d=detail.body&&detail.body.vod;
-        detailed.push({...vod,...(d||{}),station:leaderStation,vodUrl:vod.vodUrl||`https://vod.sooplive.com/player/${vod.id}`});
+        detailed.push({...vod,...(d||{}),publishedAt:vod.publishedAt,station:leaderStation,vodUrl:vod.vodUrl||`https://vod.sooplive.com/player/${vod.id}`});
       } catch (_) {
         detailed.push({...vod,station:leaderStation});
       }
@@ -170,10 +163,25 @@ async function enrichPayload(req, payload, requestUrl) {
   const shouldUse=enrichment.shouldReplaceCore(payload.selected,event) || sameEvent(payload.selected,event);
   if (!shouldUse) return payload;
 
-  let enrichedEvent=enrichment.attachBestImage(event,rawPosts,[],leaderStation);
+  let enrichedEvent={...event};
+  let leaderVods=null;
+  const verifiedVodId=enrichment.verifiedVodIdFor(crew,event);
+
+  // A user-verified event/VOD pair is stronger than another member's image.
+  // This is especially important when the leader's replay thumbnail directly
+  // visualizes the crew-wide event while the source post itself has no image.
+  if (verifiedVodId) {
+    leaderVods=await collectLeaderVods(req,leaderStation,event.activityDate);
+    const verified=leaderVods.filter(v=>String(v.id||'')===String(verifiedVodId));
+    enrichedEvent=enrichment.attachBestImage(enrichedEvent,[],verified,leaderStation);
+  }
+
   if (!enrichedEvent.imageUrl) {
-    const vods=await collectLeaderVods(req,leaderStation,enrichedEvent.activityDate);
-    enrichedEvent=enrichment.attachBestImage(enrichedEvent,rawPosts,vods,leaderStation);
+    enrichedEvent=enrichment.attachBestImage(enrichedEvent,rawPosts,[],leaderStation);
+  }
+  if (!enrichedEvent.imageUrl) {
+    leaderVods=leaderVods || await collectLeaderVods(req,leaderStation,enrichedEvent.activityDate);
+    enrichedEvent=enrichment.attachBestImage(enrichedEvent,[],leaderVods,leaderStation);
   }
 
   const fingerprint=core._internals.stableFingerprint(toCoreFingerprintInput(crew,enrichedEvent));
@@ -213,12 +221,4 @@ module.exports=async function handler(req,res) {
   return res.status(captured.state.statusCode).json(body);
 };
 
-module.exports._internals={
-  ...core._internals,
-  ...enrichment,
-  safeStations,
-  captureRes,
-  sameEvent,
-  buildSelected,
-  enrichPayload
-};
+module.exports._internals={...core._internals,...enrichment,safeStations,captureRes,sameEvent,buildSelected,enrichPayload};
