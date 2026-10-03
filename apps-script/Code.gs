@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.0',
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.1',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -611,11 +611,11 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
   const sameText = currentText === displayText;
 
   const expectedImage = String(selected.sheetImageUrl || '');
-  // 서버가 새 이미지를 검증한 경우에만 이미지 교체.
-  // 이미지가 없거나 VOD 검증이 실패했다고 기존 정상 이미지를 지우지 않는다.
-  const imageMatches = expectedImage
-    ? currentFormula.indexOf(expectedImage) !== -1
-    : true;
+  const clearImage = isBlankImageDirective_(selected);
+  // blank-image는 실제 대표 이미지가 아니라 이미지 셀을 비우라는 명시적 지시다.
+  const imageMatches = clearImage
+    ? !currentFormula
+    : (expectedImage ? currentFormula.indexOf(expectedImage) !== -1 : true);
 
   const localMatches = Boolean(samePost && sameText && imageMatches);
   const changed = !localMatches;
@@ -638,7 +638,7 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       newsText: displayText,
       postUrl: selected.postUrl || '',
       imageUrl: selected.imageUrl || '',
-      imageState: expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음'),
+      imageState: clearImage ? '이미지 없음(셀 비움)' : (expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음')),
       error: payload.complete === true ? '' : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
       sourceType: selected.sourceType || '',
       writeAction: 'skip_unchanged',
@@ -663,7 +663,7 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       newsText: displayText,
       postUrl: selected.postUrl || '',
       imageUrl: selected.imageUrl || '',
-      imageState: expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음'),
+      imageState: clearImage ? '이미지 없음(셀 비움)' : (expectedImage ? '유지(쓰기 생략)' : (currentFormula ? '기존 이미지 유지' : '이미지 없음')),
       error: payload.complete === true ? '' : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
       sourceType: selected.sourceType || '',
       writeAction: updateAction === 'write' ? 'skip_local_unchanged' : (updateAction || 'skip_local_unchanged'),
@@ -683,7 +683,9 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
     selected.postUrl
   );
 
-  if (expectedImage && !imageMatches) {
+  if (clearImage && currentFormula) {
+    clearCrewImage_(mainSheet, crew);
+  } else if (expectedImage && !imageMatches) {
     writeCrewImage_(mainSheet, crew, selected);
   }
 
@@ -702,9 +704,11 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
     newsText: displayText,
     postUrl: selected.postUrl || '',
     imageUrl: selected.imageUrl || '',
-    imageState: expectedImage
-      ? (imageMatches ? '유지' : '갱신')
-      : (currentFormula ? '기존 이미지 유지' : '이미지 없음'),
+    imageState: clearImage
+      ? (currentFormula ? '이미지 삭제' : '이미지 없음(셀 비움)')
+      : (expectedImage
+        ? (imageMatches ? '유지' : '갱신')
+        : (currentFormula ? '기존 이미지 유지' : '이미지 없음')),
     error: payload.complete === true
       ? ''
       : '일부 조회 실패 - 서버가 확정한 대표 소식만 반영',
@@ -1216,6 +1220,16 @@ function getCurrentPostUrl_(range) {
 function normalizeUrl_(url) {
 
   return String(url || '').trim().replace(/\/$/, '');
+
+}
+
+function isBlankImageDirective_(selected) {
+
+  const imageUrl = String(selected && selected.imageUrl || '').trim();
+
+  const sheetImageUrl = String(selected && selected.sheetImageUrl || '').trim();
+
+  return !imageUrl && /\/api\/blank-image(?:[?#]|$)/i.test(sheetImageUrl);
 
 }
 
