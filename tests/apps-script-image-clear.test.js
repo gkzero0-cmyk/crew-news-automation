@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8');
 
-function makeRange(initialFormula) {
+function makeRange(initialFormula, row, column) {
   let formula = initialFormula || '';
   let cleared = 0;
   return {
@@ -16,6 +16,10 @@ function makeRange(initialFormula) {
       getLinkUrl: () => 'https://www.sooplive.com/station/hwayang3/post/208597179',
       getRuns: () => []
     }),
+    getRow: () => row,
+    getColumn: () => column,
+    getNumRows: () => 1,
+    getNumColumns: () => 1,
     clearContent: () => { formula = ''; cleared += 1; },
     setFormula: value => { formula = value; },
     setRichTextValue: () => {},
@@ -25,8 +29,8 @@ function makeRange(initialFormula) {
   };
 }
 
-const newsRange = makeRange('');
-const imageRange = makeRange('=IMAGE("https://crew-news-automation.vercel.app/api/blank-image",1)');
+const newsRange = makeRange('', 4, 2);
+const imageRange = makeRange('=IMAGE("https://crew-news-automation.vercel.app/api/blank-image",1)', 4, 3);
 const mainSheet = {
   getRange: a1 => a1 === 'B4' ? newsRange : imageRange,
   getImages: () => []
