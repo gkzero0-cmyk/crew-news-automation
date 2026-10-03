@@ -167,12 +167,11 @@ async function enrichPayload(req, payload, requestUrl) {
   let leaderVods=null;
   const verifiedVodId=enrichment.verifiedVodIdFor(crew,event);
 
-  // A user-verified event/VOD pair is stronger than another member's image.
-  // This is especially important when the leader's replay thumbnail directly
-  // visualizes the crew-wide event while the source post itself has no image.
   if (verifiedVodId) {
     leaderVods=await collectLeaderVods(req,leaderStation,event.activityDate);
-    const verified=leaderVods.filter(v=>String(v.id||'')===String(verifiedVodId));
+    const verified=leaderVods
+      .filter(v=>String(v.id||'')===String(verifiedVodId))
+      .map(v=>({...v,verifiedEventMedia:true}));
     enrichedEvent=enrichment.attachBestImage(enrichedEvent,[],verified,leaderStation);
   }
 
