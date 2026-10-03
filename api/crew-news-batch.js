@@ -61,6 +61,68 @@ function displayDate(iso='') {
   return m ? `${Number(m[1])}/${Number(m[2])}` : '';
 }
 
+function imageReasonFor(source='', imageUrl='') {
+  const type=String(source||'');
+  if (!imageUrl || type==='none') return '적합 이미지 없음';
+  const labels={
+    post_self:'대표 게시글 첨부 이미지',
+    post_self_verified:'대표 게시글 재검증 이미지',
+    post_member:'같은 이벤트 크루원 게시글 이미지',
+    leader_vod_same_day:'같은 날짜 크루장 VOD 이미지',
+    leader_vod:'관련 크루장 VOD 이미지',
+    member_vod:'관련 크루원 VOD 이미지'
+  };
+  return labels[type] || '검증된 대표 이미지';
+}
+
+function selectionReasonFor(selected={}) {
+  if (selected.selectionReason) return String(selected.selectionReason);
+  const evidence=Math.max(1,Number(selected.evidenceCount||1));
+  const leaderEvidence=Boolean(selected.leaderEvidence||selected.isCrewLeader);
+  if (evidence>=2 && leaderEvidence) return '수장 포함 복수 근거';
+  if (evidence>=2) return '복수 크루원 동일 이벤트';
+  if (selected.isCrewLeader && selected.officialEvidence) return '크루장 공식 공지';
+  if (selected.isCrewLeader) return '크루장 대표 활동';
+  if (selected.titleActivityExplicit) return '이벤트 제목 직접 일치';
+  return '크루원 검증 활동';
+}
+
+function ageDaysFor(activityDate='', nowMs=Date.now()) {
+  const match=String(activityDate||'').match(/^(20\d{2})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const dayMs=Date.parse(`${match[1]}-${match[2]}-${match[3]}T00:00:00+09:00`);
+  if (!Number.isFinite(dayMs)) return null;
+  return Math.max(0,Math.floor((Number(nowMs)-dayMs)/86400000));
+}
+
+function annotatePayloadDiagnostics(payload, nowMs=Date.now()) {
+  if (!payload || typeof payload!=='object') return payload;
+  const out={...payload,buildSha:String(payload.buildSha||process.env.VERCEL_GIT_COMMIT_SHA||'').trim()};
+  if (!out.selected) {
+    out.noNewsDiagnostic=Number(out.rawCandidateCount||0)>0
+      ? '새 글 있음 / 허용 후보 없음'
+      : '새 게시글 없음';
+    return out;
+  }
+  const selected={...out.selected};
+  selected.evidenceCount=Math.max(1,Number(selected.evidenceCount||1));
+  selected.leaderEvidence=Boolean(selected.leaderEvidence||selected.isCrewLeader);
+  selected.officialEvidence=Boolean(selected.officialEvidence);
+  selected.selectionReason=selectionReasonFor(selected);
+  selected.imageReason=imageReasonFor(selected.imageSource,selected.imageUrl);
+  selected.latestRawPublishedAt=String(out.latestRawPublishedAt||selected.sourcePublishedAt||selected.publishedAt||'');
+  const days=ageDaysFor(selected.activityDate||selected.sourcePublishedAt,nowMs);
+  selected.ageDays=days;
+  selected.staleStatus=days==null ? '' : days>=14 ? '오래된 소식 14일+' : days>=7 ? '오래된 소식 7일+' : '정상';
+  const latestRawMs=Date.parse(String(selected.latestRawPublishedAt||'').replace(' ','T')+'+09:00')||0;
+  const selectedMs=Date.parse(String(selected.sourcePublishedAt||selected.publishedAt||'').replace(' ','T')+'+09:00')||0;
+  selected.newPostsDiagnostic=latestRawMs>selectedMs
+    ? '새 글 있음 / 크루소식 후보 제외'
+    : '최신 크루소식과 동기';
+  out.selected=selected;
+  return out;
+}
+
 function sameEvent(coreSelected,event) {
   if (!coreSelected || !event) return false;
   const coreDate=String(coreSelected.activityDate||'').slice(0,10);
@@ -156,6 +218,18 @@ function toCoreFingerprintInput(crew,event) {
 
 function buildSelected(crew,event,fingerprint) {
   const date=displayDate(event.activityDate);
+  const cluster=Array.isArray(event._clusterPosts)?event._clusterPosts:[];
+  const evidenceStations=new Set(cluster.map(row=>String(row&&row.station||'')).filter(Boolean));
+  const evidenceCount=Math.max(1,evidenceStations.size);
+  const leaderEvidence=cluster.some(row=>Boolean(row&&row.leader)) || Boolean(event.isCrewLeader);
+  const officialEvidence=cluster.some(row=>Boolean(row&&row.official)) || Boolean(event.official);
+  const diagnosticBase={
+    evidenceCount,
+    leaderEvidence,
+    officialEvidence,
+    isCrewLeader:Boolean(event.isCrewLeader),
+    titleActivityExplicit:Boolean(event.titleActivityExplicit)
+  };
   return {
     id:event.id,
     station:event.station,
@@ -168,12 +242,19 @@ function buildSelected(crew,event,fingerprint) {
     displayText:`${crew} - ${event.displaySummary}${date?` (${date})`:''} 📌`,
     publishedAt:event.publishedAt,
     sourcePublishedAt:event.sourcePublishedAt||event.publishedAt,
+    author:String(event.author||''),
+    evidenceCount,
+    leaderEvidence,
+    officialEvidence,
+    titleActivityExplicit:Boolean(event.titleActivityExplicit),
+    selectionReason:selectionReasonFor(diagnosticBase),
     activityDate:event.activityDate,
     activityDateSource:event.activityDateSource||'event-cluster',
     publicVerification:'event_cluster',
     imageUrl:event.imageUrl||'',
     sheetImageUrl:event.sheetImageUrl || (event.imageUrl ? '' : BLANK_SHEET_IMAGE_URL),
     imageSource:event.imageSource||'none',
+    imageReason:imageReasonFor(event.imageSource||'none',event.imageUrl||''),
     imagePostId:event.imagePostId||'',
     imageSuitabilityScore:event.imageSuitabilityScore ?? null,
     imageRejected:false,
@@ -266,6 +347,7 @@ module.exports=async function handler(req,res) {
   } catch (_) {
     body=captured.state.body;
   }
+  body=annotatePayloadDiagnostics(body);
   res.setHeader('X-Crew-News-Policy',POLICY_VERSION);
   res.setHeader('X-Crew-News-Enrichment','event-cluster-v1');
   return res.status(captured.state.statusCode).json(body);
@@ -281,6 +363,10 @@ module.exports._internals={
   isExternalParticipationRecapSelected,
   shouldAttemptEnrichment,
   buildSelected,
+  imageReasonFor,
+  selectionReasonFor,
+  ageDaysFor,
+  annotatePayloadDiagnostics,
   clearInvalidSelection,
   enrichPayload,
   BLANK_SHEET_IMAGE_URL

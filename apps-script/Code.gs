@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.1',
+  SCRIPT_VERSION: 'crew-apps-script-v1.8.0',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -505,7 +505,9 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
   const stations = crew.members.map(function(m) { return m.station; });
   const previousFingerprint = getCrewFingerprint_(crew);
   const payload = prefetchedPayload || fetchCrewBatch_(stations, crew, previousFingerprint, diagnostics);
-  const serverPolicy = String(payload && payload.policyVersion || '').trim();
+  const serverBuildSha = String(payload && payload.buildSha || '').trim();
+  const rawServerPolicy = String(payload && payload.policyVersion || '').trim();
+  const serverPolicy = rawServerPolicy + (serverBuildSha ? ' @ ' + serverBuildSha.slice(0, 8) : '');
   const results = Array.isArray(payload.results) ? payload.results : [];
   const failedStations = results.filter(function(r) { return !r || !r.ok; });
   const selectedFingerprint = String(
@@ -583,7 +585,8 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       writeAction: hadDisplay ? 'clear_no_news' : 'skip_no_news',
       fingerprint: '',
       serverPolicy: serverPolicy,
-      healthStatus: healthStatus
+      healthStatus: healthStatus,
+      diagnostics: statusDiagnosticsFromPayload_(payload, null)
     };
   }
 
@@ -602,7 +605,8 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       writeAction: 'preserve_previous',
       fingerprint: previousFingerprint,
       serverPolicy: serverPolicy,
-      healthStatus: healthStatus
+      healthStatus: healthStatus,
+      diagnostics: statusDiagnosticsFromPayload_(payload, selected)
     };
   }
 
@@ -644,7 +648,8 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       writeAction: 'skip_unchanged',
       fingerprint: selectedFingerprint || previousFingerprint,
       serverPolicy: serverPolicy,
-      healthStatus: healthStatus
+      healthStatus: healthStatus,
+      diagnostics: statusDiagnosticsFromPayload_(payload, selected)
     };
   }
 
@@ -669,7 +674,8 @@ function refreshOneCrew_(mainSheet, crew, prefetchedPayload, diagnostics) {
       writeAction: updateAction === 'write' ? 'skip_local_unchanged' : (updateAction || 'skip_local_unchanged'),
       fingerprint: selectedFingerprint || previousFingerprint,
       serverPolicy: serverPolicy,
-      healthStatus: healthStatus
+      healthStatus: healthStatus,
+      diagnostics: statusDiagnosticsFromPayload_(payload, selected)
     };
   }
 
@@ -1361,13 +1367,57 @@ function writeHeaderTimestamp_(sheet, now) {
 
 
 
+
+function statusDiagnosticsFromPayload_(payload, selected) {
+  const value = selected || {};
+  return {
+    selectionReason: String(value.selectionReason || ''),
+    imageReason: String(value.imageReason || ''),
+    evidenceCount: Number(value.evidenceCount || 0),
+    leaderEvidence: Boolean(value.leaderEvidence),
+    newPostsDiagnostic: String(value.newPostsDiagnostic || (payload && payload.noNewsDiagnostic) || ''),
+    staleStatus: String(value.staleStatus || ''),
+    ageDays: value.ageDays == null ? '' : Number(value.ageDays),
+    latestRawPublishedAt: String(value.latestRawPublishedAt || (payload && payload.latestRawPublishedAt) || '')
+  };
+}
+
+function buildStatusDiagnosticValues_(result, old) {
+  const previous = Array.isArray(old) ? old : [];
+  const has = function(key) { return Object.prototype.hasOwnProperty.call(result, key); };
+  const diagnostics = result && result.diagnostics ? result.diagnostics : (result || {});
+  const hasDiag = function(key) { return Object.prototype.hasOwnProperty.call(diagnostics, key); };
+  const checked = formatStatusDate_(result.checkedAt || new Date());
+  const success = result.successAt ? formatStatusDate_(result.successAt) : (previous[2] || '');
+  return [
+    result.crew, checked, success,
+    has('author') ? result.author : (previous[3] || ''),
+    has('publishedAt') ? result.publishedAt : (previous[4] || ''),
+    has('newsText') ? result.newsText : (previous[5] || ''),
+    has('postUrl') ? result.postUrl : (previous[6] || ''),
+    has('imageUrl') ? result.imageUrl : (previous[7] || ''),
+    result.imageState || '', result.error || '', result.sourceType || '', '10분',
+    has('fingerprint') ? result.fingerprint : (previous[12] || ''),
+    has('writeAction') ? result.writeAction : (previous[13] || ''),
+    has('healthStatus') ? result.healthStatus : (previous[14] || ''),
+    hasDiag('selectionReason') ? diagnostics.selectionReason : (previous[15] || ''),
+    hasDiag('imageReason') ? diagnostics.imageReason : (previous[16] || ''),
+    hasDiag('evidenceCount') ? diagnostics.evidenceCount : (previous[17] || ''),
+    hasDiag('leaderEvidence') ? (diagnostics.leaderEvidence ? 'O' : 'X') : (previous[18] || ''),
+    hasDiag('newPostsDiagnostic') ? diagnostics.newPostsDiagnostic : (previous[19] || ''),
+    hasDiag('staleStatus') ? diagnostics.staleStatus : (previous[20] || ''),
+    hasDiag('ageDays') ? diagnostics.ageDays : (previous[21] || ''),
+    hasDiag('latestRawPublishedAt') ? diagnostics.latestRawPublishedAt : (previous[22] || '')
+  ];
+}
+
 function ensureStatusDiagnosticsColumns_(sheet) {
   // E열은 활동일이 아니라 원문 게시글의 실제 업로드 시각을 기록한다.
   if (String(sheet.getRange('E1').getDisplayValue() || '').trim() !== '원문게시일') {
     sheet.getRange('E1').setValue('원문게시일');
   }
 
-  const requiredColumns = 15;
+  const requiredColumns = 23;
   if (sheet.getMaxColumns() < requiredColumns) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredColumns - sheet.getMaxColumns());
   }
@@ -1379,6 +1429,15 @@ function ensureStatusDiagnosticsColumns_(sheet) {
   if (!matches) {
     sheet.getRange(1, 12).copyTo(headerRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     headerRange.setValues([expected]);
+  }
+
+  const diagnosticHeaders = ['대표선정이유','이미지선정이유','근거수','수장근거','신규글진단','소식상태','경과일','최신원문일'];
+  const diagnosticRange = sheet.getRange(1, 16, 1, 8);
+  const diagnosticCurrent = diagnosticRange.getDisplayValues()[0];
+  const diagnosticsMatch = diagnosticHeaders.every(function(value, index) { return diagnosticCurrent[index] === value; });
+  if (!diagnosticsMatch) {
+    sheet.getRange(1, 12).copyTo(diagnosticRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    diagnosticRange.setValues([diagnosticHeaders]);
   }
 }
 
@@ -1406,49 +1465,8 @@ function writeStatus_(sheet, results) {
 
     if (!row) return;
 
-    const old = sheet.getRange(row, 1, 1, 15).getValues()[0];
-
-    const checked = formatStatusDate_(result.checkedAt || new Date());
-
-    const success = result.successAt ? formatStatusDate_(result.successAt) : (old[2] || '');
-
-    const has = function(key) { return Object.prototype.hasOwnProperty.call(result, key); };
-
-
-
-    sheet.getRange(row, 1, 1, 15).setValues([[
-
-      result.crew,
-
-      checked,
-
-      success,
-
-      has('author') ? result.author : (old[3] || ''),
-
-      has('publishedAt') ? result.publishedAt : (old[4] || ''),
-
-      has('newsText') ? result.newsText : (old[5] || ''),
-
-      has('postUrl') ? result.postUrl : (old[6] || ''),
-
-      has('imageUrl') ? result.imageUrl : (old[7] || ''),
-
-      result.imageState || '',
-
-      result.error || '',
-
-      result.sourceType || '',
-
-      '10분',
-
-      has('fingerprint') ? result.fingerprint : (old[12] || ''),
-
-      has('writeAction') ? result.writeAction : (old[13] || ''),
-
-      has('healthStatus') ? result.healthStatus : (old[14] || '')
-
-    ]]);
+    const old = sheet.getRange(row, 1, 1, 23).getValues()[0];
+    sheet.getRange(row, 1, 1, 23).setValues([[...buildStatusDiagnosticValues_(result, old)]]);
 
   });
 

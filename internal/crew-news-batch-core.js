@@ -964,6 +964,10 @@ module.exports = async function handler(req, res) {
         metadataDegraded: Boolean(body.menuError),
         count: posts.length,
         rawCount: rawPosts.length,
+        latestRawPublishedAt: rawPosts.reduce((latest, post) => {
+          const value = String(post && post.publishedAt || '');
+          return value > latest ? value : latest;
+        }, ''),
         strictFiltered: Boolean(crew),
         extraSearchFailed,
         posts
@@ -987,6 +991,17 @@ module.exports = async function handler(req, res) {
     }
     candidates.sort(compareRepresentativeCandidates);
     selected = candidates[0] || null;
+
+    if (selected) {
+      const evidence = candidates.filter(candidate => sameRepresentativeActivity(selected, candidate));
+      const evidenceStations = new Set(evidence.map(candidate => String(candidate._station || candidate.station || '')).filter(Boolean));
+      selected = {
+        ...selected,
+        evidenceCount: Math.max(1, evidenceStations.size),
+        leaderEvidence: evidence.some(candidate => Boolean(candidate.isCrewLeader)),
+        officialEvidence: evidence.some(candidate => OFFICIAL_BOARD_RE.test(String(candidate.boardName || '')))
+      };
+    }
 
     if (selected) {
       const originalPostImageUrl=selected.imageUrl||'';
@@ -1077,6 +1092,10 @@ module.exports = async function handler(req, res) {
   const auxiliaryFailures = results.filter(item => item && item.ok && item.extraSearchFailed);
   const staleSources = results.filter(item => item && item.ok && item.stale);
   const degradedSources = results.filter(item => item && item.ok && item.metadataDegraded);
+  const latestRawPublishedAt = results.reduce((latest, item) => {
+    const value = String(item && item.ok && item.latestRawPublishedAt || '');
+    return value > latest ? value : latest;
+  }, '');
   const reliableEmpty =
     !selected &&
     failures.length === 0 &&
@@ -1149,6 +1168,7 @@ module.exports = async function handler(req, res) {
     healthStatus,
     preservePrevious,
     rawCandidateCount,
+    latestRawPublishedAt,
     selectedFingerprint,
     previousFingerprint,
     unchanged,
@@ -1166,6 +1186,11 @@ module.exports = async function handler(req, res) {
       displayText: finalDisplayText(selected, crew),
       publishedAt: selected.publishedAt,
       sourcePublishedAt: selected.sourcePublishedAt || selected.publishedAt,
+      author: selected.author || '',
+      evidenceCount: Number(selected.evidenceCount || 1),
+      leaderEvidence: Boolean(selected.leaderEvidence || selected.isCrewLeader),
+      officialEvidence: Boolean(selected.officialEvidence),
+      titleActivityExplicit: Boolean(selected.titleActivityExplicit),
       activityDate: selected.activityDate || String(selected.publishedAt || '').slice(0, 10),
       activityDateSource: selected.activityDateSource || 'published',
       publicVerification:

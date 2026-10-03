@@ -39,7 +39,7 @@ function runScenario(kind) {
   vm.runInContext('writeStatus_ = function() {}; writeHeaderTimestamp_ = function() {};', ctx);
   ctx.refreshCrewNews();
   assert.ok(released);
-  assert.equal(cells.ScriptVersion, 'crew-apps-script-v1.7.1');
+  assert.equal(cells.ScriptVersion, 'crew-apps-script-v1.8.0');
   assert.equal(cells.APIBase, 'https://crew-news-automation.vercel.app');
   assert.equal(cells.FetchRequestCount, calls.length);
   assert.equal(cells.RunCompletedAt, cells.AppsScriptLastRun);
