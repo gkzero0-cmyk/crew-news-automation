@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "node tests/apps-script-diagnostics.test.js && node tests/reliability.test.js && node tests/representative-selection-regression.test.js && node tests/event-enrichment.test.js"
+    "test": "node tests/apps-script-diagnostics.test.js && node tests/reliability.test.js && node tests/representative-selection-regression.test.js && node tests/crew-news-audit-followups.test.js && node tests/event-enrichment.test.js && node tests/crew-news-qualification-image-reset.test.js"
   },
   "dependencies": {
     "sharp": "^0.34.4"
