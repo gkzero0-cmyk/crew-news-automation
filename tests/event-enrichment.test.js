@@ -7,6 +7,7 @@ assert.strictEqual(enrichment.isRepresentativeImageUrl('https://res.sooplive.com
 
 const gang = enrichment.synthesizeCrewEvent([
   {id:'208659971',station:'rkdakstlr911',authorId:'rkdakstlr911',title:'할말있어',publishedAt:'2026-10-02 05:34:12',boardName:'공지사항',contents:'오늘 낮 제갈금자 눙지 냉장고를 부탁해부터 그냥서버 +강씨세가 화양의 미스테리까지 봐주신 형님들 감사합니다',imageUrl:''},
+  {id:'208587173',station:'rkdakstlr911',authorId:'rkdakstlr911',title:'배가 아파서',publishedAt:'2026-10-01 16:30:56',boardName:'공지사항',contents:'좀 쉬다가 오겠습니다 와서 춘봉님이 하시는 마크서버하다가 강씨세가랑 같이 화양이 미스테리 볼 듯 이따보장ㅎㅎ',imageUrl:''},
   {id:'208596429',station:'mmange2',authorId:'mmange2',title:'1001',publishedAt:'2026-10-01 18:31:51',boardName:'공지 ❁ᴗ͈ ˬ ᴗ͈)⁾⁾⁾',contents:'9시에 강씨세가 미스테리 본다구 해서 8시에 올게여',imageUrl:''},
   {id:'208590271',station:'nangnan',authorId:'nangnan',title:'10.1 방송공지',publishedAt:'2026-10-01 17:17:09',boardName:'오방공',contents:'저녁에 강씨세가 화양 미스테리 잇다구 하더라구용??? 와서 얘기랑 카페 좀 보다가 강씨세가 모일 거 같슴니당',imageUrl:''},
   {id:'208597179',station:'hwayang3',authorId:'hwayang3',title:'오늘 강씨세가 미스테리 있습니다 (10.1)',publishedAt:'2026-10-01 18:41:35',boardName:'🕹️ㅣ방송 공지',contents:'방송은 7시 10분까지 키도록 하겠습니다 !',imageUrl:''}
@@ -14,7 +15,7 @@ const gang = enrichment.synthesizeCrewEvent([
 assert.ok(gang, 'Gangssi event should be synthesized');
 assert.strictEqual(gang.activityDate, '2026-10-01');
 assert.strictEqual(gang.displaySummary, '강씨세가 미스테리 w. 화양');
-assert.strictEqual(gang.id, '208597179', 'specific collaborator post should represent the event');
+assert.strictEqual(gang.id, '208597179', 'explicit event title should outrank a generic leader notice about the same event');
 
 const unrelatedGangVod = enrichment.attachBestImage(gang, [], [
   {id:'x',station:'rkdakstlr911',title:'강만식 개인방송',publishedAt:'2026-10-01 20:00:00',imageUrl:'https://videoimg.sooplive.com/unrelated.jpg'}
