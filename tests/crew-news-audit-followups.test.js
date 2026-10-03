@@ -31,6 +31,29 @@ assert.strictEqual(
   'a completed trip post that only schedules a later review stream must not become a new trip event'
 );
 
+const ongoingTripLastNight = strictCrewPost({
+  id: '208704035',
+  title: '9시 루희방송에서 진드기 여행소통방송-일본에서의 마지막 밤',
+  originalTitle: '9시 루희방송에서 진드기 여행소통방송-일본에서의 마지막 밤',
+  author: '찰리씨',
+  authorId: 'sircharlee',
+  publishedAt: '2026-10-02 20:27:08',
+  boardName: '⏰주인장의 일정⏰',
+  accessType: 'public',
+  postUrl: 'https://www.sooplive.com/station/sircharlee/post/208704035',
+  contents: [
+    '어느덧 여행의 마지막 밤이 다가왔네요.',
+    '마지막으로 진드기 여행의 회포를 푸는 시간이 9시에 있을 예정입니다!'
+  ].join('\n')
+}, '진드기', 'sircharlee');
+
+assert(ongoingTripLastNight, 'ongoing trip update should remain a valid crew-news candidate');
+assert.strictEqual(
+  ongoingTripLastNight.activityDate,
+  '2026-09-30',
+  'updates from the verified 3박4일 trip must stay anchored to the 9/30 trip start date'
+);
+
 const leaderContest = {
   representativeTier: 1,
   isCrewLeader: true,

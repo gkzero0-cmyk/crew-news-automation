@@ -66,7 +66,8 @@ const REJECT_VOD_MEDIA_IDS = new Set([
 const MANUAL_ACTIVITY_DATE = Object.freeze({
   '진드기': {
     '208412493': '2026-09-30',
-    '208395133': '2026-09-30'
+    '208395133': '2026-09-30',
+    '208704035': '2026-09-30'
   }
 });
 
