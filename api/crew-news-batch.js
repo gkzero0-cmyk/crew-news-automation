@@ -16,6 +16,8 @@ const LEADER_BY_CREW = Object.freeze({
   '자라섬':'dstv'
 });
 
+const BLANK_SHEET_IMAGE_URL='https://crew-news-automation.vercel.app/api/blank-image';
+
 function safeStations(raw='') {
   return [...new Set(String(raw||'').split(',').map(v=>v.trim()).filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))].slice(0,20);
 }
@@ -68,8 +70,32 @@ function sameEvent(coreSelected,event) {
     enrichment.normalize(event.displaySummary).includes(enrichment.normalize(coreSelected.summary||''));
 }
 
+function selectedPostFromPayload(payload) {
+  if (!payload || !payload.selected) return null;
+  const id=String(payload.selected.id||'');
+  if (!id) return null;
+  for (const result of payload.results||[]) {
+    for (const post of (result&&result.posts)||[]) {
+      if (String(post&&post.id||'')===id) return post;
+    }
+  }
+  return null;
+}
+
+function isExternalParticipationRecapSelected(payload) {
+  if (!payload || !payload.selected) return false;
+  const activity=String(payload.selected.summary||payload.selected.displaySummary||'');
+  if (!/(?:면접|합방|회의|콘텐츠|컨텐츠)/i.test(activity)) return false;
+  const post=selectedPostFromPayload(payload);
+  if (!post) return false;
+  const text=`${post.originalTitle||post.title||''}\n${post.contents||''}`;
+  return /(?:방송|채널)에서[^.!?\n]{0,80}(?:면접|합방|회의|콘텐츠|컨텐츠)[^.!?\n]{0,40}(?:보고|하고)\s*왔/i.test(text) ||
+    /(?:면접|합방|회의|콘텐츠|컨텐츠)[^.!?\n]{0,30}(?:보고|하고)\s*왔/i.test(text);
+}
+
 function shouldAttemptEnrichment(payload) {
   if (!payload || payload.ok!==true || !payload.strictCrew) return false;
+  if (isExternalParticipationRecapSelected(payload)) return true;
   if (!enrichment.needsEnrichment(payload.selected)) return false;
   if (payload.preservePrevious===true && payload.healthStatus!=='suspicious_empty') return false;
   return true;
@@ -146,7 +172,7 @@ function buildSelected(crew,event,fingerprint) {
     activityDateSource:event.activityDateSource||'event-cluster',
     publicVerification:'event_cluster',
     imageUrl:event.imageUrl||'',
-    sheetImageUrl:event.sheetImageUrl||'',
+    sheetImageUrl:event.sheetImageUrl || (event.imageUrl ? '' : BLANK_SHEET_IMAGE_URL),
     imageSource:event.imageSource||'none',
     imagePostId:event.imagePostId||'',
     imageSuitabilityScore:event.imageSuitabilityScore ?? null,
@@ -158,16 +184,33 @@ function buildSelected(crew,event,fingerprint) {
   };
 }
 
+function clearInvalidSelection(payload) {
+  return {
+    ...payload,
+    healthStatus:'healthy',
+    preservePrevious:false,
+    suspiciousEmpty:false,
+    reliableEmpty:true,
+    selected:null,
+    selectedFingerprint:'',
+    unchanged:false,
+    shouldWrite:true,
+    updateAction:'clear_invalid_selection',
+    eventClusterVersion:'event-cluster-v1'
+  };
+}
+
 async function enrichPayload(req, payload, requestUrl) {
   if (!shouldAttemptEnrichment(payload)) return payload;
   const crew=String(payload.strictCrew||'');
   const stations=safeStations(requestUrl.searchParams.get('stations')||'');
   const leaderStation=LEADER_BY_CREW[crew]||'';
+  const invalidCore=isExternalParticipationRecapSelected(payload);
   const rawPosts=await collectRawPosts(req,stations,crew,requestUrl.searchParams.get('refresh')==='1');
   const event=enrichment.synthesizeCrewEvent(rawPosts,crew,leaderStation);
-  if (!event) return payload;
+  if (!event) return invalidCore ? clearInvalidSelection(payload) : payload;
 
-  const shouldUse=enrichment.shouldReplaceCore(payload.selected,event) || sameEvent(payload.selected,event);
+  const shouldUse=invalidCore || enrichment.shouldReplaceCore(payload.selected,event) || sameEvent(payload.selected,event);
   if (!shouldUse) return payload;
 
   let enrichedEvent={...event};
@@ -228,4 +271,17 @@ module.exports=async function handler(req,res) {
   return res.status(captured.state.statusCode).json(body);
 };
 
-module.exports._internals={...core._internals,...enrichment,safeStations,captureRes,sameEvent,shouldAttemptEnrichment,buildSelected,enrichPayload};
+module.exports._internals={
+  ...core._internals,
+  ...enrichment,
+  safeStations,
+  captureRes,
+  sameEvent,
+  selectedPostFromPayload,
+  isExternalParticipationRecapSelected,
+  shouldAttemptEnrichment,
+  buildSelected,
+  clearInvalidSelection,
+  enrichPayload,
+  BLANK_SHEET_IMAGE_URL
+};
