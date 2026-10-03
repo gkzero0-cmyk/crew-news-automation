@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const batch = require('../api/crew-news-batch.js');
-const { compareRepresentativeCandidates } = batch._internals;
+const { compareRepresentativeCandidates, shouldAttemptEnrichment } = batch._internals;
 
 const olderLeader = {
   representativeTier: 1,
@@ -50,6 +50,30 @@ const sameEventLeader = {
 assert(
   compareRepresentativeCandidates(sameEventLeader, sameEventMember) < 0,
   'leader representative should remain preferred inside the same activity/date'
+);
+
+assert.strictEqual(
+  shouldAttemptEnrichment({
+    ok: true,
+    strictCrew: '강씨세가',
+    healthStatus: 'suspicious_empty',
+    preservePrevious: true,
+    selected: null
+  }),
+  true,
+  'suspicious_empty must still run event-cluster enrichment so raw member posts can recover the event'
+);
+
+assert.strictEqual(
+  shouldAttemptEnrichment({
+    ok: true,
+    strictCrew: '강씨세가',
+    healthStatus: 'degraded',
+    preservePrevious: true,
+    selected: null
+  }),
+  false,
+  'degraded upstream data must keep preserve-previous protection and skip enrichment'
 );
 
 console.log('representative-selection regression: ok');

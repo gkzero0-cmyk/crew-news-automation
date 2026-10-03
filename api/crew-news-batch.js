@@ -68,6 +68,13 @@ function sameEvent(coreSelected,event) {
     enrichment.normalize(event.displaySummary).includes(enrichment.normalize(coreSelected.summary||''));
 }
 
+function shouldAttemptEnrichment(payload) {
+  if (!payload || payload.ok!==true || !payload.strictCrew) return false;
+  if (!enrichment.needsEnrichment(payload.selected)) return false;
+  if (payload.preservePrevious===true && payload.healthStatus!=='suspicious_empty') return false;
+  return true;
+}
+
 async function collectRawPosts(req, stations, crew, forceRefresh) {
   const all=[];
   const targets=[...new Set([...stations,...(enrichment.AUXILIARY_VALIDATORS[crew]||[])])];
@@ -152,7 +159,7 @@ function buildSelected(crew,event,fingerprint) {
 }
 
 async function enrichPayload(req, payload, requestUrl) {
-  if (!payload || payload.ok!==true || payload.preservePrevious===true || !payload.strictCrew || !enrichment.needsEnrichment(payload.selected)) return payload;
+  if (!shouldAttemptEnrichment(payload)) return payload;
   const crew=String(payload.strictCrew||'');
   const stations=safeStations(requestUrl.searchParams.get('stations')||'');
   const leaderStation=LEADER_BY_CREW[crew]||'';
@@ -192,6 +199,7 @@ async function enrichPayload(req, payload, requestUrl) {
     policyVersion:POLICY_VERSION,
     healthStatus:'healthy',
     preservePrevious:false,
+    suspiciousEmpty:false,
     selectedFingerprint:fingerprint,
     unchanged,
     shouldWrite:!unchanged,
@@ -220,4 +228,4 @@ module.exports=async function handler(req,res) {
   return res.status(captured.state.statusCode).json(body);
 };
 
-module.exports._internals={...core._internals,...enrichment,safeStations,captureRes,sameEvent,buildSelected,enrichPayload};
+module.exports._internals={...core._internals,...enrichment,safeStations,captureRes,sameEvent,shouldAttemptEnrichment,buildSelected,enrichPayload};
