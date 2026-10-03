@@ -69,7 +69,7 @@ const unverifiedJailVod = enrichment.attachBestImage(jail, [], [
 assert.strictEqual(unverifiedJailVod.imageUrl, '', 'generic VOD title must require explicit event verification');
 const jailWithImage = enrichment.attachBestImage(jail, [], [
   {id:'208336221',station:'iamquaddurup',title:'장지수 [무수]',publishedAt:'2026-09-28 20:04:59',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=vod&fit=sheet',verifiedEventMedia:true}
-], '장지수용소');
+], 'iamquaddurup');
 assert.strictEqual(jailWithImage.imageSource, 'leader_vod_same_day');
 assert.strictEqual(jailWithImage.fallbackVodUrl, 'https://vod.sooplive.com/player/208336221');
 
