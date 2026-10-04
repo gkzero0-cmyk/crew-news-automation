@@ -186,9 +186,14 @@ function detectActivity(raw = '') {
 
 function isRetrospectiveActivityPost(raw = '') {
   const text = String(raw || '').replace(/\s+/g, ' ');
-  const completionCue = /(?:한국\s*도착|집에\s*(?:갑|가|왔|도착)|다녀왔|여행(?:이|은|을)?[^.!?\n]{0,40}(?:끝|마무리|오랜만|좋았|즐거웠))/i;
+  const completionCue = /(?:한국\s*도착|집에?\s*(?:갑|가|왔|도착)|다녀왔|여행(?:이|은|을)?[^.!?\n]{0,40}(?:끝|마무리|오랜만|좋았|즐거웠))/i;
   const followupCue = /(?:오늘|내일|모레)?[^.!?\n]{0,30}(?:후기|썰|리뷰)(?:\s*(?:뱅|방송))?/i;
-  return completionCue.test(text) && followupCue.test(text);
+  const explicitTravelReview = /(?:여행|엠티|\bMT\b)[^.!?\n]{0,40}(?:후기|썰|리뷰)|(?:후기|썰|리뷰)[^.!?\n]{0,30}(?:여행|엠티|\bMT\b)/i;
+  const futureTripCue = /(?:내일부터|모레부터|오늘부터|여행\s*(?:갑니다|가요|예정|시작)|(?:여행|엠티)[^.!?\n]{0,30}(?:출발|가게\s*되))/i;
+  return followupCue.test(text) && (
+    completionCue.test(text) ||
+    (explicitTravelReview.test(text) && !futureTripCue.test(text))
+  );
 }
 
 function deriveCompetitiveDisplaySummary(sourceTitle = '', crew = '', activity = '') {
@@ -456,8 +461,18 @@ function strictCrewPost(post, crew, station) {
     Boolean(override) ||
     ((titleCrew || bodyCrew || boardCrew) && COLLECTIVE_RE.test(sourceTitle + '\n' + body))
   );
+  const officialMemberTravel = !leader &&
+    officialBoard &&
+    bodyCrew &&
+    activityFamily(activity) === 'travel' &&
+    confirmedSchedule &&
+    COLLECTIVE_RE.test(activityText) &&
+    (
+      activityDurationDays >= 2 ||
+      /(?:단체|크루|멤버)[^.!?\n]{0,30}(?:여행|엠티|\bMT\b)|(?:여행|엠티|\bMT\b)[^.!?\n]{0,30}(?:중|갑니다|가요|가게\s*되|출발)/i.test(activityText)
+    );
 
-  if (!leaderRepresentative && !direct && !noticeRelated) return null;
+  if (!leaderRepresentative && !officialMemberTravel && !direct && !noticeRelated) return null;
 
   const representativeTier = leaderRepresentative ? 1 : 2;
   const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
