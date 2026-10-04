@@ -9,12 +9,54 @@ const {
   sameRepresentativeActivity,
   compareRepresentativeCandidates,
   choosePostImageCandidate,
-  vodMatchScore
+  vodMatchScore,
+  strictCrewPost
 } = core;
 
 assert.equal(parseActivityDurationDays('진드기 일본 여행 4박 5일'), 5, '4박5일 must create a five-day event window');
 assert.equal(parseActivityDurationDays('크루 여행 3박4일'), 4, '3박4일 must create a four-day event window');
 assert.equal(parseActivityDurationDays('10월 4일 여행'), 0, 'ordinary dates must not be mistaken for durations');
+
+const bodyOnlyTravelAnnouncement = strictCrewPost({
+  id: '208395133',
+  title: '9/29 오뱅내',
+  originalTitle: '9/29 오뱅내',
+  author: '히키☆',
+  authorId: 'hikicomoring',
+  publishedAt: '2026-09-29 12:54:08',
+  boardName: '⏰방송알림',
+  accessType: 'public',
+  contents: '내일부터 진드기 일본여행으로 3박 4일동안 빙하기에 들어가기 때문에 오늘은 이끼단들과 놀려고 합니다'
+}, '진드기', 'hikicomoring');
+assert(bodyOnlyTravelAnnouncement, 'official broadcast-alert post with explicit crew travel duration should qualify even when the generic title has no crew name');
+assert.equal(bodyOnlyTravelAnnouncement.activityDate, '2026-09-30');
+assert.equal(bodyOnlyTravelAnnouncement.activityDurationDays, 4);
+
+const retrospectiveBroadcastAlert = strictCrewPost({
+  id: 'after-trip-hiki',
+  title: '10/4 오뱅내',
+  originalTitle: '10/4 오뱅내',
+  author: '히키☆',
+  authorId: 'hikicomoring',
+  publishedAt: '2026-10-04 10:38:21',
+  boardName: '⏰방송알림',
+  accessType: 'public',
+  contents: '오늘은 11시에 뱅온해서 1시에 진드기 단체 일본여행 후기를 다같이 얘기해볼 계획입니다. 일본에서 어떤 일이 있었는지 재밌게 얘기하고 싶어요.'
+}, '진드기', 'hikicomoring');
+assert.equal(retrospectiveBroadcastAlert, null, 'post-trip travel review must not become a new crew travel event');
+
+const retrospectiveNotice = strictCrewPost({
+  id: 'after-trip-yaguja',
+  title: '오늘 할거 많다 집중~~!!!',
+  originalTitle: '오늘 할거 많다 집중~~!!!',
+  author: '야구자',
+  authorId: 'yaguja00',
+  publishedAt: '2026-10-04 11:38:56',
+  boardName: '공지',
+  accessType: 'public',
+  contents: '진드기 여행 1시에 진드기 단체 여행 후기 이후에 개인적으로 사진 보면서 개인 후기풀기'
+}, '진드기', 'yaguja00');
+assert.equal(retrospectiveNotice, null, 'notice-board travel retrospective must not replace the original travel news');
 
 const candidates = [
   {
