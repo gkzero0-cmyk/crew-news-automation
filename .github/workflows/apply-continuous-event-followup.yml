@@ -1,0 +1,51 @@
+name: Apply continuous event followup fix
+
+on:
+  push:
+    branches:
+      - fix/continuous-event-followup-20261004
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/continuous-event-followup-20261004
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply minimal root-cause fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('internal/crew-news-batch-core.js')
+          s=p.read_text()
+
+          old="""function isRetrospectiveActivityPost(raw = '') {\n  const text = String(raw || '').replace(/\\s+/g, ' ');\n  const completionCue = /(?:한국\\s*도착|집에\\s*(?:갑|가|왔|도착)|다녀왔|여행(?:이|은|을)?[^.!?\\n]{0,40}(?:끝|마무리|오랜만|좋았|즐거웠))/i;\n  const followupCue = /(?:오늘|내일|모레)?[^.!?\\n]{0,30}(?:후기|썰|리뷰)(?:\\s*(?:뱅|방송))?/i;\n  return completionCue.test(text) && followupCue.test(text);\n}\n"""
+          new="""function isRetrospectiveActivityPost(raw = '') {\n  const text = String(raw || '').replace(/\\s+/g, ' ');\n  const completionCue = /(?:한국\\s*도착|집에?\\s*(?:갑|가|왔|도착)|다녀왔|여행(?:이|은|을)?[^.!?\\n]{0,40}(?:끝|마무리|오랜만|좋았|즐거웠))/i;\n  const followupCue = /(?:오늘|내일|모레)?[^.!?\\n]{0,30}(?:후기|썰|리뷰)(?:\\s*(?:뱅|방송))?/i;\n  const explicitTravelReview = /(?:여행|엠티|\\bMT\\b)[^.!?\\n]{0,40}(?:후기|썰|리뷰)|(?:후기|썰|리뷰)[^.!?\\n]{0,30}(?:여행|엠티|\\bMT\\b)/i;\n  const futureTripCue = /(?:내일부터|모레부터|오늘부터|여행\\s*(?:갑니다|가요|예정|시작)|(?:여행|엠티)[^.!?\\n]{0,30}(?:출발|가게\\s*되))/i;\n  return followupCue.test(text) && (\n    completionCue.test(text) ||\n    (explicitTravelReview.test(text) && !futureTripCue.test(text))\n  );\n}\n"""
+          if old not in s: raise SystemExit('retrospective function marker missing')
+          s=s.replace(old,new,1)
+
+          old="""  const direct = (titleCrew || boardCrew) && Boolean(activity);\n  const noticeRelated = notice && (titleCrew || bodyCrew || boardCrew) && Boolean(activity);\n  const leaderRepresentative = leader && officialBoard && (\n    Boolean(override) ||\n    ((titleCrew || bodyCrew || boardCrew) && COLLECTIVE_RE.test(sourceTitle + '\\n' + body))\n  );\n\n  if (!leaderRepresentative && !direct && !noticeRelated) return null;\n"""
+          new="""  const direct = (titleCrew || boardCrew) && Boolean(activity);\n  const noticeRelated = notice && (titleCrew || bodyCrew || boardCrew) && Boolean(activity);\n  const leaderRepresentative = leader && officialBoard && (\n    Boolean(override) ||\n    ((titleCrew || bodyCrew || boardCrew) && COLLECTIVE_RE.test(sourceTitle + '\\n' + body))\n  );\n  const officialMemberTravel = !leader &&\n    officialBoard &&\n    bodyCrew &&\n    activityFamily(activity) === 'travel' &&\n    confirmedSchedule &&\n    COLLECTIVE_RE.test(activityText) &&\n    (\n      activityDurationDays >= 2 ||\n      /(?:단체|크루|멤버)[^.!?\\n]{0,30}(?:여행|엠티|\\bMT\\b)|(?:여행|엠티|\\bMT\\b)[^.!?\\n]{0,30}(?:중|갑니다|가요|가게\\s*되|출발)/i.test(activityText)\n    );\n\n  if (!leaderRepresentative && !officialMemberTravel && !direct && !noticeRelated) return null;\n"""
+          if old not in s: raise SystemExit('representative gate marker missing')
+          s=s.replace(old,new,1)
+
+          p.write_text(s)
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run full tests
+        run: npm test
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/crew-news-batch-core.js
+          git commit -m "fix: keep travel start announcements representative"
+          git push origin HEAD:fix/continuous-event-followup-20261004
