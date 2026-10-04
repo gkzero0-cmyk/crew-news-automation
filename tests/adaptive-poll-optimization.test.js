@@ -56,7 +56,7 @@ assert.equal(batchInternals.isStrongVodFallbackCandidate({ score: 23, vod: { ima
 assert.equal(batchInternals.isStrongVodFallbackCandidate({ score: 30, vod: { imageUrl: '' } }), false);
 
 const code = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
-assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.6'/);
+assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.7'/);
 assert.match(code, /TRIGGER_MINUTES:\s*30/);
 assert.ok(code.includes(".addItem('30분 자동갱신 설치'"), 'Apps Script menu should describe the real interval');
 assert.ok(code.includes("String(CREW_AUTOMATION.TRIGGER_MINUTES) + '분'"), 'status interval should come from the configured interval');

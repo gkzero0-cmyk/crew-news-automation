@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const code = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
 
-assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.6'/, 'Apps Script version should advance');
+assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.7'/, 'Apps Script version should advance');
 assert.ok(code.includes('function validateCrewConfigAndMain_('), 'config/main validation helper should exist');
 assert.ok(code.includes('function writeOperatorSummary_('), 'operator summary helper should exist');
 assert.ok(code.includes("['ConfigValidation'"), 'status summary should expose config validation');
