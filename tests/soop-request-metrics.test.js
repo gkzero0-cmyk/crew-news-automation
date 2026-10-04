@@ -23,7 +23,7 @@ assert.deepEqual(internals.snapshotSoopRequestMetrics(metrics), {
 });
 
 const code = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
-assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.5'/);
+assert.match(code, /SCRIPT_VERSION:\s*'crew-apps-script-v1\.7\.6'/);
 for (const label of [
   'SOOPTotalRequests',
   'SOOPBoardRequests',
