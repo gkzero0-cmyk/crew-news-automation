@@ -34,3 +34,4 @@ jobs:
           git add apps-script/Code.gs tests
           git commit -m 'feat: improve sheet operations and diagnostics'
           git push origin HEAD:feat/sheet-ops-improvements-20261004
+# rerun after test-harness compatibility guard
