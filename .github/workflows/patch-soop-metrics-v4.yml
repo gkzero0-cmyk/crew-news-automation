@@ -1,0 +1,70 @@
+name: Apply SOOP request telemetry v4
+
+on:
+  push:
+    branches:
+      - 'perf/soop-request-metrics-20261004'
+    paths:
+      - '.github/workflows/patch-soop-metrics-v4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/soop-request-metrics-20261004
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/patch-soop-metrics.yml').read_text()
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          lines = source[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines)
+
+          old = """def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)"""
+          new = """def replace_once(text, old, new, label):
+              count = text.count(old)
+              if label == 'Apps status metrics' and count == 0:
+                  import re
+                  match = re.search(r\"(?ms)^\\s*sheet\\.getRange\\('A16:B22'\\)\\.setValues\\(\\[.*?^\\s*\\]\\);\", text)
+                  if not match:
+                      raise SystemExit('Apps status metrics: status block not found')
+                  suffix = new.split(']);', 1)[1]
+                  return text[:match.end()] + suffix + text[match.end():]
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)"""
+          if old not in script:
+              raise SystemExit('replace_once helper not found in source workflow')
+          script = script.replace(old, new, 1)
+          exec(compile(script, 'soop-telemetry-patch.py', 'exec'), {'__name__': '__main__'})
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify full suite
+        run: npm test
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/crew-news.js internal/crew-news-batch-core.js api/crew-news-all.js apps-script/Code.gs tests
+          git commit -m 'feat: expose SOOP request telemetry'
+          git push origin HEAD:perf/soop-request-metrics-20261004
