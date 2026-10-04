@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "node tests/continuous-event-media.test.js && node tests/sheet-ops-improvements.test.js && node tests/adaptive-poll-optimization.test.js && node tests/soop-request-metrics.test.js && node tests/poll-cost-optimization.test.js && node tests/apps-script-diagnostics.test.js && node tests/apps-script-image-clear.test.js && node tests/blank-image-background.test.js && node tests/diagnostic-observability.test.js && node tests/reliability.test.js && node tests/representative-selection-regression.test.js && node tests/crew-news-audit-followups.test.js && node tests/event-enrichment.test.js && node tests/crew-news-qualification-image-reset.test.js && node tests/adjacent-crew-context.test.js"
+    "test": "node tests/continuous-event-media.test.js && node tests/sheet-ops-improvements.test.js && node tests/adaptive-poll-optimization.test.js && node tests/soop-request-metrics.test.js && node tests/poll-cost-optimization.test.js && node tests/apps-script-diagnostics.test.js && node tests/apps-script-image-clear.test.js && node tests/blank-image-background.test.js && node tests/diagnostic-observability.test.js && node tests/reliability.test.js && node tests/representative-selection-regression.test.js && node tests/crew-news-audit-followups.test.js && node tests/event-enrichment.test.js && node tests/external-participation-title.test.js && node tests/crew-news-qualification-image-reset.test.js && node tests/adjacent-crew-context.test.js"
   },
   "dependencies": {
     "sharp": "^0.34.4"
