@@ -35,10 +35,11 @@ jobs:
           s = s.replace("SCRIPT_VERSION: 'crew-apps-script-v1.7.6'", "SCRIPT_VERSION: 'crew-apps-script-v1.7.7'", 1)
           p.write_text(s)
 
-          t = Path('tests/sheet-ops-improvements.test.js')
-          q = t.read_text()
-          q = q.replace("crew-apps-script-v1\\.7\\.6", "crew-apps-script-v1\\.7\\.7", 1)
-          t.write_text(q)
+          for t in Path('tests').glob('*.test.js'):
+              q = t.read_text()
+              q = q.replace('crew-apps-script-v1\\.7\\.6', 'crew-apps-script-v1\\.7\\.7')
+              q = q.replace('crew-apps-script-v1.7.6', 'crew-apps-script-v1.7.7')
+              t.write_text(q)
           PY
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -48,6 +49,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps-script/Code.gs tests/sheet-ops-improvements.test.js
+          git add apps-script/Code.gs tests
           git commit -m "fix: read member counts from crew header column"
           git push origin HEAD:fix/member-count-column-20261004
