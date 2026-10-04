@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.6',
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.7',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -532,7 +532,7 @@ function validateCrewConfigAndMain_(mainSheet, crews) {
   }
 
   const lastRow = Math.max(1, mainSheet.getLastRow());
-  mainSheet.getRange(1, 1, lastRow, 1).getDisplayValues().forEach(function(row) {
+  mainSheet.getRange(1, 2, lastRow, 1).getDisplayValues().forEach(function(row) {
     const match = String(row[0] || '').trim().match(/^(.+)\((\d+)\)$/);
     if (match) declaredCounts[match[1].trim()] = Number(match[2]);
   });
