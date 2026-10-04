@@ -3,6 +3,20 @@
 const batchHandler = require('./crew-news-batch.js');
 const { POLICY_VERSION } = require('../lib/version.js');
 
+const SOOP_METRIC_FIELDS = Object.freeze([
+  'totalRequests','boardRequests','menuRequests','menuCacheHits','menuCacheMisses',
+  'vodListRequests','postVerifyRequests','postVerifyCacheHits','vodDetailRequests'
+]);
+
+function aggregateSoopMetrics(batches) {
+  const out = Object.fromEntries(SOOP_METRIC_FIELDS.map(key => [key, 0]));
+  for (const batch of Array.isArray(batches) ? batches : []) {
+    const metrics = batch && batch.payload && batch.payload.soopMetrics || {};
+    for (const key of SOOP_METRIC_FIELDS) out[key] += Number(metrics[key] || 0);
+  }
+  return out;
+}
+
 function clampInt(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -157,12 +171,14 @@ module.exports = async function handler(req, res) {
     ),
     policyVersion: POLICY_VERSION,
     fetchMode: 'single-batch-v1',
+    soopMetrics: aggregateSoopMetrics(batches),
     requestedCrews: crews.length,
     batches
   });
 };
 
 module.exports._internals = {
+  aggregateSoopMetrics,
   clampInt,
   safeCrewRequests,
   mapLimit,

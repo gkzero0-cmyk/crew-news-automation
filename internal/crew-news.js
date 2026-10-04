@@ -20,6 +20,46 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
 };
 
+const SOOP_METRIC_FIELDS = Object.freeze([
+  'totalRequests',
+  'boardRequests',
+  'menuRequests',
+  'menuCacheHits',
+  'menuCacheMisses',
+  'vodListRequests',
+  'postVerifyRequests',
+  'postVerifyCacheHits',
+  'vodDetailRequests'
+]);
+
+function createSoopRequestMetrics() {
+  return Object.fromEntries(SOOP_METRIC_FIELDS.map(key => [key, 0]));
+}
+
+function ensureSoopRequestMetrics(req) {
+  if (!req || typeof req !== 'object') return createSoopRequestMetrics();
+  if (!req._soopMetrics || typeof req._soopMetrics !== 'object') {
+    req._soopMetrics = createSoopRequestMetrics();
+  }
+  return req._soopMetrics;
+}
+
+function bumpSoopMetric(metrics, key, amount = 1) {
+  if (!metrics || !SOOP_METRIC_FIELDS.includes(key)) return;
+  const delta = Number(amount);
+  metrics[key] = Number(metrics[key] || 0) + (Number.isFinite(delta) ? delta : 0);
+}
+
+function countSoopUpstream(metrics, key) {
+  bumpSoopMetric(metrics, 'totalRequests', 1);
+  if (key) bumpSoopMetric(metrics, key, 1);
+}
+
+function snapshotSoopRequestMetrics(metrics) {
+  const source = metrics && typeof metrics === 'object' ? metrics : {};
+  return Object.fromEntries(SOOP_METRIC_FIELDS.map(key => [key, Number(source[key] || 0)]));
+}
+
 function safeStation(value = '') {
   const station = String(value || '').trim();
   return /^[A-Za-z0-9_-]{2,64}$/.test(station) ? station : '';
@@ -181,7 +221,8 @@ function classifyAccess(boardName = '', row = {}) {
   return 'public';
 }
 
-async function fetchJson(url, headers = {}, timeoutMs = 10000) {
+async function fetchJson(url, headers = {}, timeoutMs = 10000, metrics = null, metricField = '') {
+  countSoopUpstream(metrics, metricField);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -205,11 +246,11 @@ async function fetchJson(url, headers = {}, timeoutMs = 10000) {
   }
 }
 
-async function firstJson(urls, headers) {
+async function firstJson(urls, headers, metrics = null, metricField = '') {
   const errors = [];
   for (const url of urls) {
     try {
-      return await fetchJson(url, headers);
+      return await fetchJson(url, headers, 10000, metrics, metricField);
     } catch (error) {
       errors.push({ url, error: String(error && error.message || error), status: Number(error && error.status || 0) || null });
     }
@@ -288,12 +329,16 @@ const publicPostVerifyCache = new Map();
 async function verifyPublicPost(station, postId, req) {
   const safeId = String(postId || '').replace(/\D/g,'');
   if (!safeId) throw new Error('invalid_post_id');
+  const metrics = ensureSoopRequestMetrics(req);
   const key = String(station) + '|' + safeId;
   const cached = publicPostVerifyCache.get(key);
   if (cached) {
     const ttl = cached.value && cached.value.verified
       ? POST_VERIFY_POSITIVE_TTL_MS : POST_VERIFY_NEGATIVE_TTL_MS;
-    if (Date.now() - cached.at < ttl) return cached.value;
+    if (Date.now() - cached.at < ttl) {
+      bumpSoopMetric(metrics, 'postVerifyCacheHits', 1);
+      return cached.value;
+    }
     publicPostVerifyCache.delete(key);
   }
 
@@ -302,6 +347,7 @@ async function verifyPublicPost(station, postId, req) {
   const timer = setTimeout(() => controller.abort(), 6500);
   let value;
   try {
+    countSoopUpstream(metrics, 'postVerifyRequests');
     const response = await fetch(url, {
       redirect:'follow',
       signal:controller.signal,
@@ -357,6 +403,8 @@ async function verifyPublicPost(station, postId, req) {
 async function fetchVodDetail(titleNo, req) {
   const id = String(titleNo || '').replace(/\D/g, '');
   if (!id) throw new Error('invalid_vod_id');
+  const metrics = ensureSoopRequestMetrics(req);
+  countSoopUpstream(metrics, 'vodDetailRequests');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -408,15 +456,19 @@ function clearMenuCacheForTest() {
   menuCache.clear();
 }
 
-async function fetchMenu(station, headers) {
+async function fetchMenu(station, headers, metrics = null) {
   const key = menuCacheKey(station, headers);
   const cached = menuCache.get(key);
-  if (cached && Date.now() - cached.at < MENU_CACHE_TTL_MS) return cached.value;
+  if (cached && Date.now() - cached.at < MENU_CACHE_TTL_MS) {
+    bumpSoopMetric(metrics, 'menuCacheHits', 1);
+    return cached.value;
+  }
   if (cached) menuCache.delete(key);
+  bumpSoopMetric(metrics, 'menuCacheMisses', 1);
 
   const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
   try {
-    const result = await firstJson(urls, headers);
+    const result = await firstJson(urls, headers, metrics, 'menuRequests');
     if (!result.data || !Array.isArray(result.data.board)) throw schemaError('menu','missing_board_array');
     const rows = result.data.board;
     const byNo = new Map();
@@ -455,16 +507,17 @@ function normalizeVod(row, station, req) {
   };
 }
 
-async function fetchVodRows(station, {type='review', page=1, perPage=12}={}) {
+async function fetchVodRows(station, {type='review', page=1, perPage=12}={}, metrics=null) {
   const safeType = /^(?:all|review|normal)$/.test(type) ? type : 'review';
   const params = new URLSearchParams({page:String(page),per_page:String(perPage),orderby:'reg_date'});
   const urls = SOOP_VOD_HOSTS.map(host => `${host}/api/${encodeURIComponent(station)}/vods/${safeType}?${params}`);
-  const result = await firstJson(urls, {Referer:`https://www.sooplive.com/station/${station}/vod/${safeType}`});
+  const result = await firstJson(urls, {Referer:`https://www.sooplive.com/station/${station}/vod/${safeType}`}, metrics, 'vodListRequests');
   return requireRows(result.data, 'vod');
 }
 
 async function fetchVods(station, req, options={}) {
-  const rows = await fetchVodRows(station, options);
+  const metrics = ensureSoopRequestMetrics(req);
+  const rows = await fetchVodRows(station, options, metrics);
   return rows.map(row => normalizeVod(row, station, req));
 }
 
@@ -542,6 +595,7 @@ module.exports = async function handler(req, res) {
   const mode = requestUrl.searchParams.get('mode') || 'posts';
   const station = safeStation(requestUrl.searchParams.get('station') || '');
   if (!station) return res.status(400).json({ error: 'invalid_station' });
+  const metrics = ensureSoopRequestMetrics(req);
 
   if (mode === 'vod-detail') {
     const titleNo = safeText(requestUrl.searchParams.get('title_no') || '', 40).replace(/\D/g,'');
@@ -562,7 +616,7 @@ module.exports = async function handler(req, res) {
     const vodPerPage = intParam(requestUrl.searchParams.get('per_page'), 12, 1, 30);
     try {
       const options={type:vodType,page:vodPage,perPage:vodPerPage};
-      const rows = await fetchVodRows(station, options);
+      const rows = await fetchVodRows(station, options, metrics);
       const vods = rows.map(row => normalizeVod(row, station, req));
       const debug = requestUrl.searchParams.get('debug') === '1';
       const debugId = safeText(requestUrl.searchParams.get('debug_id') || '', 40);
@@ -591,7 +645,7 @@ module.exports = async function handler(req, res) {
     ...(cookie ? { Cookie: cookie } : {})
   };
 
-  const menu = await fetchMenu(station, headers);
+  const menu = await fetchMenu(station, headers, metrics);
   const params = new URLSearchParams({
     per_page: String(perPage),
     start_date: startDate,
@@ -606,7 +660,7 @@ module.exports = async function handler(req, res) {
 
   const urls = SOOP_BOARD_HOSTS.map(host => `${host}/api/${encodeURIComponent(station)}/board/?${params.toString()}`);
   try {
-    const result = await firstJson(urls, headers);
+    const result = await firstJson(urls, headers, metrics, 'boardRequests');
     const rows = requireRows(result.data, 'board');
     const posts = rows.map(row => normalizePost(row, station, menu.byNo, req));
     const debug = requestUrl.searchParams.get('debug') === '1';
@@ -655,6 +709,9 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports._internals = {
+  createSoopRequestMetrics,
+  ensureSoopRequestMetrics,
+  snapshotSoopRequestMetrics,
   safeStation,
   absoluteHttps,
   looksLikeContentImage,

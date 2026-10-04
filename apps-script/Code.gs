@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.3',
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.4',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -229,7 +229,7 @@ function refreshCrewNews() {
 
     // 정상 경로에서는 8개 크루를 단일 Vercel 함수 호출로 가져온다.
     // 집계 endpoint 자체가 실패한 경우에만 기존 크루별 호출로 폴백한다.
-    const diagnostics = { batchRequests: 0, fallbackRequests: 0, batchReceived: false };
+    const diagnostics = { batchRequests: 0, fallbackRequests: 0, batchReceived: false, soopMetrics: emptySoopMetrics_() };
     let batchPayloads = {};
     try {
       batchPayloads = fetchAllCrewBatches_(crews, diagnostics);
@@ -301,6 +301,28 @@ function refreshCrewNews() {
 
 
 
+function emptySoopMetrics_() {
+  return {
+    totalRequests: 0,
+    boardRequests: 0,
+    menuRequests: 0,
+    menuCacheHits: 0,
+    menuCacheMisses: 0,
+    vodListRequests: 0,
+    postVerifyRequests: 0,
+    postVerifyCacheHits: 0,
+    vodDetailRequests: 0
+  };
+}
+
+function mergeSoopMetrics_(diagnostics, metrics) {
+  if (!diagnostics || !metrics) return;
+  if (!diagnostics.soopMetrics) diagnostics.soopMetrics = emptySoopMetrics_();
+  Object.keys(diagnostics.soopMetrics).forEach(function(key) {
+    diagnostics.soopMetrics[key] += Number(metrics[key] || 0);
+  });
+}
+
 function setAutomationState_(state, lastRun, diagnostics) {
 
   try {
@@ -336,6 +358,18 @@ function setAutomationState_(state, lastRun, diagnostics) {
         ['RunCompletedAt', formatStatusDate_(lastRun)],
         ['RunOutcome', diagnostics.outcome]
       ]);
+    const soop = diagnostics.soopMetrics || emptySoopMetrics_();
+    sheet.getRange('D12:E20').setValues([
+      ['SOOPTotalRequests', Number(soop.totalRequests || 0)],
+      ['SOOPBoardRequests', Number(soop.boardRequests || 0)],
+      ['SOOPMenuRequests', Number(soop.menuRequests || 0)],
+      ['SOOPMenuCacheHits', Number(soop.menuCacheHits || 0)],
+      ['SOOPMenuCacheMisses', Number(soop.menuCacheMisses || 0)],
+      ['SOOPVodListRequests', Number(soop.vodListRequests || 0)],
+      ['SOOPPostVerifyRequests', Number(soop.postVerifyRequests || 0)],
+      ['SOOPPostVerifyCacheHits', Number(soop.postVerifyCacheHits || 0)],
+      ['SOOPVodDetailRequests', Number(soop.vodDetailRequests || 0)]
+    ]);
     }
 
   } catch (e) {
@@ -773,6 +807,7 @@ function fetchAllCrewBatches_(crews, diagnostics) {
   if (code < 200 || code >= 300 || !envelope || !Array.isArray(envelope.batches)) {
     throw new Error('통합 크루 소식 API 오류 (' + code + ')');
   }
+  mergeSoopMetrics_(diagnostics, envelope.soopMetrics);
 
   const out = {};
   envelope.batches.forEach(function(row) {
@@ -811,6 +846,8 @@ function fetchCrewBatch_(stations, crew, previousFingerprint, diagnostics) {
   } catch (e) {
     throw new Error('SOOP 프록시 응답 파싱 실패 (' + code + ')');
   }
+
+  mergeSoopMetrics_(diagnostics, payload && payload.soopMetrics);
 
   // 서버가 preservePrevious를 보낸 503도 정상적인 "보존 신호"로 전달한다.
   if (code >= 500 && (!payload || (!payload.results && payload.preservePrevious !== true))) {
