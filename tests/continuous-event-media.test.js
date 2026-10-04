@@ -7,6 +7,7 @@ const {
   parseActivityDurationDays,
   applyContinuousEventContext,
   sameRepresentativeActivity,
+  compareRepresentativeCandidates,
   choosePostImageCandidate,
   vodMatchScore
 } = core;
@@ -38,6 +39,12 @@ assert.equal(normalized[0].activityDate, '2026-09-30', 'travel event must keep i
 assert.equal(normalized[1].activityDate, '2026-09-30', 'later posts inside the trip must inherit the event start date');
 assert.equal(normalized[1].continuousEventEndDate, '2026-10-04', '4박5일 window must end on 10/4');
 assert.equal(sameRepresentativeActivity(normalized[0], normalized[1]), true, 'posts inside one trip window must be one representative activity');
+
+const laterSameTier = {...normalized[1], representativeTier:1, isCrewLeader:true};
+assert(
+  compareRepresentativeCandidates(normalized[0], laterSameTier) < 0,
+  'same-tier follow-up posts inside one continuous event must not replace the start representative only because they are newer'
+);
 
 const image = choosePostImageCandidate(normalized[0], normalized);
 assert(image, 'a suitable same-event post image should be found across the trip window');
