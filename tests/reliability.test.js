@@ -163,7 +163,8 @@ assert.ok(preferredVodScore>genericVodScore,'verified representative VOD should 
 const imageInternals=require('../api/image.js')._internals;
 assert.deepStrictEqual(
   imageInternals.cropPlanForSheet(1000,2200),
-  {crop:true,left:0,top:0,width:1000,height:1250}
+  {crop:false,width:1000,height:2200},
+  'tall posters must preserve the full image so lower text remains readable'
 );
 assert.deepStrictEqual(
   imageInternals.cropPlanForSheet(1600,900),
