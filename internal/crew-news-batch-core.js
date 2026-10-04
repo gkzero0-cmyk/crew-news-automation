@@ -504,7 +504,7 @@ function strictCrewPost(post, crew, station) {
   const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
   const summary = override || externalParticipationSummary || competitiveSummary || activity;
   const manualDisplay = MANUAL_DISPLAY_SUMMARY[crew] && MANUAL_DISPLAY_SUMMARY[crew][id] || '';
-  const displaySummary = manualDisplay || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);
+  const displaySummary = manualDisplay || externalParticipationSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);
   // Apps Script v4는 후보 허용 판정에서 제목/게시판에 크루명이 있어야 한다.
   // 모든 후보 제목을 "크루명 + 표시 요약"으로 전달하고 Apps Script가 첫 크루명만 제거하게 한다.
   // 이렇게 하면 후보 판정은 통과하면서 zero-width 문자를 전혀 쓰지 않는다.
