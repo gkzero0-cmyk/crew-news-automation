@@ -1,0 +1,208 @@
+name: Apply adaptive poll optimization
+
+on:
+  push:
+    branches:
+      - 'perf/adaptive-poll-optimization-20261004'
+    paths:
+      - '.github/workflows/patch-adaptive-poll.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/adaptive-poll-optimization-20261004
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply bounded optimization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          # internal/crew-news.js: fetch board rows first and only fetch menu metadata
+          # when the current rows can plausibly become crew-news candidates.
+          path = Path('internal/crew-news.js')
+          text = path.read_text()
+          marker = """function clearMenuCacheForTest() {
+            menuCache.clear();
+          }
+
+          async function fetchMenu(station, headers, metrics = null) {"""
+          replacement = """function clearMenuCacheForTest() {
+            menuCache.clear();
+          }
+
+          const MENU_LAZY_ACTIVITY_RE = /합방|회의|점호|여행|엠티|\\bMT\\b|모임|회식|대회|대결|대항전|매치|\\bvs\\.?\\b|모집|면접|영입|합격|가입|탈퇴|창단|행사|콘텐츠|컨텐츠|러닝|달리기|윷놀이|사냥|특집|일정/i;
+
+          function shouldFetchMenuForRows(rows, crew = '') {
+            const crewName = safeText(crew, 120).trim();
+            if (!crewName) return true;
+            const crewToken = crewName.replace(/\\s+/g, '').toLowerCase();
+            return (Array.isArray(rows) ? rows : []).some(row => {
+              const title = safeText(first(row, ['title_name','title','subject']), 500);
+              const body = cleanBody(first(row, ['contents','content','body']), 12000);
+              const text = title + '\\n' + body;
+              const compact = text.replace(/\\s+/g, '').toLowerCase();
+              return compact.includes(crewToken) || MENU_LAZY_ACTIVITY_RE.test(text);
+            });
+          }
+
+          async function fetchMenu(station, headers, metrics = null) {"""
+          text = replace_once(text, marker, replacement, 'lazy menu helper')
+
+          text = replace_once(
+              text,
+              "const station = safeStation(requestUrl.searchParams.get('station') || '');\n  if (!station) return res.status(400).json({ error: 'invalid_station' });\n  const metrics = ensureSoopRequestMetrics(req);",
+              "const station = safeStation(requestUrl.searchParams.get('station') || '');\n  if (!station) return res.status(400).json({ error: 'invalid_station' });\n  const crewContext = safeText(requestUrl.searchParams.get('crew') || '', 120);\n  const metrics = ensureSoopRequestMetrics(req);",
+              'crew context')
+
+          text = replace_once(
+              text,
+              "  const menu = await fetchMenu(station, headers, metrics);\n  const params = new URLSearchParams({",
+              "  const params = new URLSearchParams({",
+              'remove eager menu')
+
+          text = replace_once(
+              text,
+              "    const result = await firstJson(urls, headers, metrics, 'boardRequests');\n    const rows = requireRows(result.data, 'board');\n    const posts = rows.map(row => normalizePost(row, station, menu.byNo, req));",
+              "    const result = await firstJson(urls, headers, metrics, 'boardRequests');\n    const rows = requireRows(result.data, 'board');\n    const menu = shouldFetchMenuForRows(rows, crewContext)\n      ? await fetchMenu(station, headers, metrics)\n      : { rows: [], byNo: new Map(), source: '', error: '', skipped: true };\n    const posts = rows.map(row => normalizePost(row, station, menu.byNo, req));",
+              'lazy menu lookup')
+
+          text = replace_once(
+              text,
+              "  fetchMenu,\n  MENU_CACHE_TTL_MS,",
+              "  fetchMenu,\n  shouldFetchMenuForRows,\n  MENU_CACHE_TTL_MS,",
+              'export lazy menu helper')
+          path.write_text(text)
+
+          # internal/crew-news-batch-core.js: pass crew context to the station fetcher and
+          # stage VOD fallback work around the most representative sources.
+          path = Path('internal/crew-news-batch-core.js')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "    if (forceRefresh) params.set('refresh', '1');\n    try {",
+              "    if (crew) params.set('crew', crew);\n    if (forceRefresh) params.set('refresh', '1');\n    try {",
+              'pass crew context')
+
+          marker = """function trimVodFallbackCache() {
+            if (vodFallbackCache.size <= 80) return;
+            const oldest = [...vodFallbackCache.entries()].sort((a,b)=>a[1].at-b[1].at).slice(0, vodFallbackCache.size-80);
+            for (const [key] of oldest) vodFallbackCache.delete(key);
+          }
+
+          function vodDetailConsistent"""
+          replacement = """function trimVodFallbackCache() {
+            if (vodFallbackCache.size <= 80) return;
+            const oldest = [...vodFallbackCache.entries()].sort((a,b)=>a[1].at-b[1].at).slice(0, vodFallbackCache.size-80);
+            for (const [key] of oldest) vodFallbackCache.delete(key);
+          }
+
+          function buildVodSearchPlan(stations, selectedStation, leaderStation) {
+            const unique = [...new Set((Array.isArray(stations) ? stations : []).filter(Boolean))];
+            const priority = [...new Set([selectedStation, leaderStation].filter(Boolean))]
+              .filter(station => unique.includes(station));
+            return {
+              priority,
+              secondary: unique.filter(station => !priority.includes(station))
+            };
+          }
+
+          function isStrongVodFallbackCandidate(candidate) {
+            return Boolean(
+              candidate && Number(candidate.score || 0) >= 24 &&
+              candidate.vod && candidate.vod.imageUrl
+            );
+          }
+
+          function vodDetailConsistent"""
+          text = replace_once(text, marker, replacement, 'VOD staged search helpers')
+
+          text = replace_once(
+              text,
+              "  let best = null;\n  const startedAt=Date.now();\n  const maxWorkMs=9500;\n  for (const station of stations.slice(0, 5)) {",
+              "  let best = null;\n  const startedAt=Date.now();\n  const maxWorkMs=9500;\n  const plan = buildVodSearchPlan(\n    stations,\n    post._station || '',\n    LEADER_BY_CREW[post.strictCrew] || ''\n  );\n  const searchStations = [...plan.priority, ...plan.secondary].slice(0, 5);\n  for (const station of searchStations) {",
+              'VOD plan usage')
+
+          text = replace_once(
+              text,
+              "      const targetDate = post.activityDate || dateOnly(post.publishedAt);\n      const maxPages = 3;",
+              "      const targetDate = post.activityDate || dateOnly(post.publishedAt);\n      const maxPages = plan.priority.includes(station) ? 2 : 1;",
+              'VOD page limits')
+
+          text = replace_once(
+              text,
+              "          if (score < 0 || (best && best.score >= score)) continue;\n          best = {score, vod, station};\n        }",
+              "          if (score < 0 || (best && best.score >= score)) continue;\n          best = {score, vod, station};\n        }\n\n        if (isStrongVodFallbackCandidate(best)) break;",
+              'VOD strong candidate inner stop')
+
+          text = replace_once(
+              text,
+              "        if (vods.length < 20) break;\n      }\n\n    } catch (_) {",
+              "        if (vods.length < 20) break;\n      }\n\n      if (isStrongVodFallbackCandidate(best)) break;\n    } catch (_) {",
+              'VOD strong candidate outer stop')
+
+          text = replace_once(
+              text,
+              "  vodMatchScore,\n  findVodFallback,",
+              "  vodMatchScore,\n  buildVodSearchPlan,\n  isStrongVodFallbackCandidate,\n  findVodFallback,",
+              'export VOD helpers')
+          path.write_text(text)
+
+          # Apps Script: 30-minute cadence, truthful menu/status labels and a version bump.
+          path = Path('apps-script/Code.gs')
+          text = path.read_text()
+          text = text.replace('15분 자동 갱신', '30분 자동 갱신')
+          text = text.replace('이후 15분마다 자동 갱신', '이후 30분마다 자동 갱신')
+          text = text.replace("SCRIPT_VERSION: 'crew-apps-script-v1.7.4'", "SCRIPT_VERSION: 'crew-apps-script-v1.7.5'")
+          text = text.replace('TRIGGER_MINUTES: 15', 'TRIGGER_MINUTES: 30')
+          text = text.replace(".addItem('15분 자동갱신 설치', 'installCrewNewsAutomation')", ".addItem('30분 자동갱신 설치', 'installCrewNewsAutomation')")
+          text = replace_once(
+              text,
+              "      '10분',",
+              "      String(CREW_AUTOMATION.TRIGGER_MINUTES) + '분',",
+              'dynamic status interval')
+          path.write_text(text)
+
+          # Existing regressions that pin the prior version/cadence move with this approved change.
+          for test_path in Path('tests').glob('*.test.js'):
+            test_text = test_path.read_text()
+            if test_path.name == 'adaptive-poll-optimization.test.js':
+              continue
+            test_text = test_text.replace('v1\\\\.7\\\\.4', 'v1\\\\.7\\\\.5')
+            test_text = test_text.replace('v1.7.4', 'v1.7.5')
+            test_text = test_text.replace('/TRIGGER_MINUTES:\\s*15\\b/', '/TRIGGER_MINUTES:\\s*30\\b/')
+            test_text = test_text.replace('every 15 minutes', 'every 30 minutes')
+            test_text = test_text.replace('/15분 자동갱신 설치/', '/30분 자동갱신 설치/')
+            test_text = test_text.replace('15-minute trigger', '30-minute trigger')
+            test_path.write_text(test_text)
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify full suite
+        run: npm test
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/crew-news.js internal/crew-news-batch-core.js apps-script/Code.gs tests
+          if git diff --cached --quiet; then
+            echo 'No implementation changes to commit.'
+            exit 0
+          fi
+          git commit -m 'perf: reduce crew polling upstream work'
+          git push origin HEAD:perf/adaptive-poll-optimization-20261004
