@@ -688,6 +688,23 @@ function trimVodFallbackCache() {
   for (const [key] of oldest) vodFallbackCache.delete(key);
 }
 
+function buildVodSearchPlan(stations, selectedStation, leaderStation) {
+  const unique = [...new Set((Array.isArray(stations) ? stations : []).filter(Boolean))];
+  const priority = [...new Set([selectedStation, leaderStation].filter(Boolean))]
+    .filter(station => unique.includes(station));
+  return {
+    priority,
+    secondary: unique.filter(station => !priority.includes(station))
+  };
+}
+
+function isStrongVodFallbackCandidate(candidate) {
+  return Boolean(
+    candidate && Number(candidate.score || 0) >= 24 &&
+    candidate.vod && candidate.vod.imageUrl
+  );
+}
+
 function vodDetailConsistent(listVod, detailVod, station) {
   if (!listVod || !detailVod) return false;
   if (String(listVod.id || '') !== String(detailVod.id || '')) return false;
@@ -715,11 +732,17 @@ async function findVodFallbackUncached(post, stations, req) {
   let best = null;
   const startedAt=Date.now();
   const maxWorkMs=9500;
-  for (const station of stations.slice(0, 5)) {
+  const plan = buildVodSearchPlan(
+    stations,
+    post._station || '',
+    LEADER_BY_CREW[post.strictCrew] || ''
+  );
+  const searchStations = [...plan.priority, ...plan.secondary].slice(0, 5);
+  for (const station of searchStations) {
     if (Date.now() - startedAt > maxWorkMs) break;
     try {
       const targetDate = post.activityDate || dateOnly(post.publishedAt);
-      const maxPages = 3;
+      const maxPages = plan.priority.includes(station) ? 2 : 1;
 
       for (let page = 1; page <= maxPages; page += 1) {
         if (Date.now() - startedAt > maxWorkMs) break;
@@ -742,6 +765,8 @@ async function findVodFallbackUncached(post, stations, req) {
           best = {score, vod, station};
         }
 
+        if (isStrongVodFallbackCandidate(best)) break;
+
         // 최신순 목록이 목표 활동일보다 하루 이상 과거로 내려가면 더 볼 필요가 없다.
         if (targetDate && oldestDate) {
           const cutoff = Date.parse(targetDate + 'T00:00:00+09:00') - 86400000;
@@ -750,6 +775,7 @@ async function findVodFallbackUncached(post, stations, req) {
         if (vods.length < 20) break;
       }
 
+      if (isStrongVodFallbackCandidate(best)) break;
     } catch (_) {
       // 한 방송국의 VOD 조회 실패는 다른 방송국 후보 탐색을 막지 않는다.
     }
@@ -931,6 +957,7 @@ module.exports = async function handler(req, res) {
       start_date: startDate,
       end_date: endDate
     });
+    if (crew) params.set('crew', crew);
     if (forceRefresh) params.set('refresh', '1');
     try {
       const { status, body } = await invokeCrewNews(req, params);
@@ -1222,6 +1249,8 @@ module.exports._internals = {
   postImageCandidateScore,
   choosePostImageCandidate,
   vodMatchScore,
+  buildVodSearchPlan,
+  isStrongVodFallbackCandidate,
   findVodFallback,
   vodFallbackKey,
   imageSourceFor,

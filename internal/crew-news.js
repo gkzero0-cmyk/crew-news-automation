@@ -456,6 +456,21 @@ function clearMenuCacheForTest() {
   menuCache.clear();
 }
 
+const MENU_LAZY_ACTIVITY_RE = /합방|회의|점호|여행|엠티|\bMT\b|모임|회식|대회|대결|대항전|매치|\bvs\.?\b|모집|면접|영입|합격|가입|탈퇴|창단|행사|콘텐츠|컨텐츠|러닝|달리기|윷놀이|사냥|특집|일정/i;
+
+function shouldFetchMenuForRows(rows, crew = '') {
+  const crewName = safeText(crew, 120).trim();
+  if (!crewName) return true;
+  const crewToken = crewName.replace(/\s+/g, '').toLowerCase();
+  return (Array.isArray(rows) ? rows : []).some(row => {
+    const title = safeText(first(row, ['title_name','title','subject']), 500);
+    const body = cleanBody(first(row, ['contents','content','body']), 12000);
+    const text = title + '\n' + body;
+    const compact = text.replace(/\s+/g, '').toLowerCase();
+    return compact.includes(crewToken) || MENU_LAZY_ACTIVITY_RE.test(text);
+  });
+}
+
 async function fetchMenu(station, headers, metrics = null) {
   const key = menuCacheKey(station, headers);
   const cached = menuCache.get(key);
@@ -595,6 +610,7 @@ module.exports = async function handler(req, res) {
   const mode = requestUrl.searchParams.get('mode') || 'posts';
   const station = safeStation(requestUrl.searchParams.get('station') || '');
   if (!station) return res.status(400).json({ error: 'invalid_station' });
+  const crewContext = safeText(requestUrl.searchParams.get('crew') || '', 120);
   const metrics = ensureSoopRequestMetrics(req);
 
   if (mode === 'vod-detail') {
@@ -645,7 +661,6 @@ module.exports = async function handler(req, res) {
     ...(cookie ? { Cookie: cookie } : {})
   };
 
-  const menu = await fetchMenu(station, headers, metrics);
   const params = new URLSearchParams({
     per_page: String(perPage),
     start_date: startDate,
@@ -662,6 +677,9 @@ module.exports = async function handler(req, res) {
   try {
     const result = await firstJson(urls, headers, metrics, 'boardRequests');
     const rows = requireRows(result.data, 'board');
+    const menu = shouldFetchMenuForRows(rows, crewContext)
+      ? await fetchMenu(station, headers, metrics)
+      : { rows: [], byNo: new Map(), source: '', error: '', skipped: true };
     const posts = rows.map(row => normalizePost(row, station, menu.byNo, req));
     const debug = requestUrl.searchParams.get('debug') === '1';
     if(cookie || forceRefresh)setNoStore(res);
@@ -723,6 +741,7 @@ module.exports._internals = {
   fetchVods,
   fetchVodDetail,
   fetchMenu,
+  shouldFetchMenuForRows,
   MENU_CACHE_TTL_MS,
   clearMenuCacheForTest,
   verifyPublicPost,

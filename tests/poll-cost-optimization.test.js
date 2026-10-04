@@ -6,8 +6,8 @@ const path = require('path');
 
 async function main() {
   const codeGs = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
-  assert.match(codeGs, /TRIGGER_MINUTES:\s*15\b/, 'Apps Script trigger should run every 15 minutes');
-  assert.match(codeGs, /15분 자동갱신 설치/, 'Apps Script menu label should describe the 15-minute trigger');
+  assert.match(codeGs, /TRIGGER_MINUTES:\s*30\b/, 'Apps Script trigger should run every 30 minutes');
+  assert.match(codeGs, /30분 자동갱신 설치/, 'Apps Script menu label should describe the 30-minute trigger');
 
   const crewNews = require('../internal/crew-news.js');
   const internals = crewNews._internals || {};
