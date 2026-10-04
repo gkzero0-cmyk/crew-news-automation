@@ -1,0 +1,65 @@
+name: Finalize adaptive poll optimization
+
+on:
+  push:
+    branches:
+      - 'perf/adaptive-poll-optimization-20261004'
+    paths:
+      - '.github/workflows/patch-adaptive-poll-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/adaptive-poll-optimization-20261004
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply approved implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/patch-adaptive-poll.yml').read_text()
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          lines = source[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines)
+          exec(compile(script, 'adaptive-poll-patch.py', 'exec'), {'__name__': '__main__'})
+          PY
+      - name: Verify no stale cadence/version assertions remain
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          stale=[]
+          for p in Path('tests').glob('*.test.js'):
+              text=p.read_text()
+              if 'crew-apps-script-v1\\.7\\.4' in text or "crew-apps-script-v1.7.4" in text:
+                  stale.append(str(p))
+          if stale:
+              raise SystemExit('stale v1.7.4 assertions: ' + ', '.join(stale))
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify full suite
+        run: npm test
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/crew-news.js internal/crew-news-batch-core.js apps-script/Code.gs tests
+          if git diff --cached --quiet; then
+            echo 'No implementation changes to commit.'
+            exit 0
+          fi
+          git commit -m 'perf: reduce crew polling upstream work'
+          git push origin HEAD:perf/adaptive-poll-optimization-20261004
