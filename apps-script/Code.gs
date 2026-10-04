@@ -1,6 +1,6 @@
 /**
 
- * 신생 종겜 크루 멤버 현황 - 15분 자동 갱신 (서버 단일 판정 v5 + fingerprint diagnostics)
+ * 신생 종겜 크루 멤버 현황 - 30분 자동 갱신 (서버 단일 판정 v5 + fingerprint diagnostics)
 
  * 대상 시트: 1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM
 
@@ -16,7 +16,7 @@
 
  *    - 즉시 1회 갱신
 
- *    - 이후 15분마다 자동 갱신
+ *    - 이후 30분마다 자동 갱신
 
  */
 
@@ -26,7 +26,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   SPREADSHEET_ID: '1-mACl-yykHphsqiSUNPkoC1GHydOYmWX-xHqdRz7DVM',
 
-  SCRIPT_VERSION: 'crew-apps-script-v1.7.4',
+  SCRIPT_VERSION: 'crew-apps-script-v1.7.5',
 
   MAIN_SHEET: '신생 종겜 크루',
 
@@ -40,7 +40,7 @@ const CREW_AUTOMATION = Object.freeze({
 
   TIMEZONE: 'Asia/Seoul',
 
-  TRIGGER_MINUTES: 15,
+  TRIGGER_MINUTES: 30,
 
   FETCH_PER_PAGE: 30,
 
@@ -108,7 +108,7 @@ function onOpen() {
 
     .addItem('지금 갱신', 'refreshCrewNews')
 
-    .addItem('15분 자동갱신 설치', 'installCrewNewsAutomation')
+    .addItem('30분 자동갱신 설치', 'installCrewNewsAutomation')
 
     .addItem('자동갱신 제거', 'uninstallCrewNewsAutomation')
 
@@ -1571,7 +1571,7 @@ function writeStatus_(sheet, results) {
 
       result.sourceType || '',
 
-      '10분',
+      String(CREW_AUTOMATION.TRIGGER_MINUTES) + '분',
 
       has('fingerprint') ? result.fingerprint : (old[12] || ''),
 
