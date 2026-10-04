@@ -269,6 +269,16 @@ function compareRepresentativeCandidates(a, b) {
     Number(a.representativeMediaPriority || 0);
   if (mediaPriority) return mediaPriority;
 
+  const sameContinuousEvent = Boolean(
+    a.continuousEventStartDate &&
+    a.continuousEventStartDate === b.continuousEventStartDate
+  );
+  if (sameContinuousEvent) {
+    const aAnchor=String(a.observedActivityDate||a.activityDate||'').slice(0,10)===a.continuousEventStartDate;
+    const bAnchor=String(b.observedActivityDate||b.activityDate||'').slice(0,10)===b.continuousEventStartDate;
+    if (aAnchor!==bAnchor) return Number(bAnchor)-Number(aAnchor);
+  }
+
   const time =
     parseTime(b.sourcePublishedAt || b.publishedAt) -
     parseTime(a.sourcePublishedAt || a.publishedAt);
@@ -362,6 +372,29 @@ function resolveActivityDate(raw = '', publishedAt = '') {
   return resolveActivityDateInfo(raw,publishedAt).date;
 }
 
+function parseActivityDurationDays(raw = '') {
+  const text=String(raw||'').replace(/\s+/g,' ');
+  let match=text.match(/(\d{1,2})\s*박\s*(\d{1,2})\s*일/);
+  if (match) {
+    const days=Number(match[2]);
+    return days>=2 && days<=14 ? days : 0;
+  }
+  match=text.match(/(?:^|[^\d])(\d{1,2})\s*일(?:간|동안)(?:[^\d]|$)/);
+  if (match) {
+    const days=Number(match[1]);
+    return days>=2 && days<=14 ? days : 0;
+  }
+  return 0;
+}
+
+function addIsoDays(dateOnly, offset) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateOnly||''))) return '';
+  const date=new Date(String(dateOnly)+'T00:00:00Z');
+  if (!Number.isFinite(date.getTime())) return '';
+  date.setUTCDate(date.getUTCDate()+Number(offset||0));
+  return date.toISOString().slice(0,10);
+}
+
 function activityPublishedAt(dateOnly, publishedAt) {
   if (!dateOnly) return publishedAt;
   const time = String(publishedAt || '').match(/\b(\d{2}:\d{2}:\d{2})\b/);
@@ -413,6 +446,10 @@ function strictCrewPost(post, crew, station) {
 
   if (!activity) return null;
 
+  const activityDurationDays = activityFamily(activity) === 'travel'
+    ? parseActivityDurationDays(activityText)
+    : 0;
+
   const direct = (titleCrew || boardCrew) && Boolean(activity);
   const noticeRelated = notice && (titleCrew || bodyCrew || boardCrew) && Boolean(activity);
   const leaderRepresentative = leader && officialBoard && (
@@ -459,6 +496,7 @@ function strictCrewPost(post, crew, station) {
     isCrewLeader: leader,
     isLeaderRepresentative: leaderRepresentative,
     representativeMediaPriority: Number(REPRESENTATIVE_MEDIA_PRIORITY[crew] && REPRESENTATIVE_MEDIA_PRIORITY[crew][id] || 0),
+    activityDurationDays,
     extractionQuality: extraction.score,
     extractionComplete: extraction.complete
   };
@@ -512,6 +550,44 @@ function activityFamily(value='') {
   if(/모집|면접|영입|신규\s*멤버|신입\s*멤버|합격/.test(text)) return 'recruit';
   if(/특집/.test(text)) return 'special';
   return '';
+}
+
+function applyContinuousEventContext(candidates) {
+  const list=(Array.isArray(candidates)?candidates:[]).map(item=>({...item}));
+  const windows=[];
+  for (const row of list) {
+    if (activityFamily(row.strictActivity||row.displaySummary||'') !== 'travel') continue;
+    const start=String(row.activityDate||'').slice(0,10);
+    const days=Number(row.activityDurationDays||0);
+    if (!start || days<2) continue;
+    windows.push({
+      crew:String(row.strictCrew||''),
+      start,
+      end:addIsoDays(start,days-1)
+    });
+  }
+  windows.sort((a,b)=>a.crew.localeCompare(b.crew)||a.start.localeCompare(b.start));
+  const merged=[];
+  for (const window of windows) {
+    const prev=merged[merged.length-1];
+    if (prev && prev.crew===window.crew && window.start<=prev.end) {
+      if (window.end>prev.end) prev.end=window.end;
+    } else {
+      merged.push({...window});
+    }
+  }
+  for (const row of list) {
+    if (activityFamily(row.strictActivity||row.displaySummary||'') !== 'travel') continue;
+    const observed=String(row.activityDate||'').slice(0,10);
+    const window=merged.find(item=>item.crew===String(row.strictCrew||'') && observed>=item.start && observed<=item.end);
+    if (!window) continue;
+    row.observedActivityDate=observed;
+    row.activityDate=window.start;
+    row.continuousEventStartDate=window.start;
+    row.continuousEventEndDate=window.end;
+    if (observed!==window.start) row.activityDateSource='continuous-event';
+  }
+  return list;
 }
 
 function sameNewsScore(selected, candidate) {
@@ -570,7 +646,9 @@ function postImageCandidateScore(selected, candidate) {
   if (same<0) return -1;
 
   let score=same;
-  if (String(selected.id||'')===String(candidate.id||'')) score+=100;
+  const continuousTravel = activityFamily(selected.strictActivity||selected.displaySummary||'') === 'travel' &&
+    Boolean(selected.continuousEventStartDate);
+  if (String(selected.id||'')===String(candidate.id||'') && !continuousTravel) score+=100;
   if (candidate.isCrewLeader) score+=4;
   if (NOTICE_BOARD_RE.test(String(candidate.boardName||''))) score+=3;
   if (candidate.extractionComplete!==false) score+=2;
@@ -585,7 +663,9 @@ function choosePostImageCandidate(selected, candidates) {
   // after it passes the same relevance gate used for every crew.
   const self=list.find(item=>String(item?.id||'')===String(selected.id||'')) || selected;
   const selfScore=postImageCandidateScore(selected,self);
-  if (selfScore>=0) {
+  const continuousTravel = activityFamily(selected.strictActivity||selected.displaySummary||'') === 'travel' &&
+    Boolean(selected.continuousEventStartDate);
+  if (!continuousTravel && selfScore>=0) {
     return {
       imageUrl:self.imageUrl,
       sheetImageUrl:self.sheetImageUrl||self.imageUrl,
@@ -595,9 +675,10 @@ function choosePostImageCandidate(selected, candidates) {
     };
   }
 
-  // Priority 2: another crew member's post about the exact same dated activity.
+  // For continuous travel events, search the whole event window and allow a
+  // later same-event post to upgrade the representative image without replacing the news item.
   const others=list
-    .filter(item=>String(item?.id||'')!==String(selected.id||''))
+    .filter(item=>continuousTravel || String(item?.id||'')!==String(selected.id||''))
     .map(item=>({item,score:postImageCandidateScore(selected,item)}))
     .filter(row=>row.score>=0)
     .sort((a,b)=>b.score-a.score || parseTime(b.item.sourcePublishedAt||b.item.publishedAt)-parseTime(a.item.sourcePublishedAt||a.item.publishedAt));
@@ -607,7 +688,7 @@ function choosePostImageCandidate(selected, candidates) {
   return {
     imageUrl:best.item.imageUrl,
     sheetImageUrl:best.item.sheetImageUrl||best.item.imageUrl,
-    imageSource:'post_member',
+    imageSource:String(best.item.id||'')===String(selected.id||'') ? 'post_self' : 'post_member',
     imagePostId:String(best.item.id||''),
     imageSuitabilityScore:best.score
   };
@@ -644,6 +725,12 @@ function vodMatchScore(post, vod) {
   ) || (
     /윷놀이/.test(activity) && /윷놀이/.test(title)
   );
+  const verifiedTravelMedia = vod.verifiedEventMedia === true || Number(
+    VERIFIED_VOD_MEDIA_PRIORITY[post.strictCrew] &&
+    VERIFIED_VOD_MEDIA_PRIORITY[post.strictCrew][String(vod.id||'')] || 0
+  ) > 0;
+  if (activityFamily(activity) === 'travel' && !verifiedTravelMedia) return -1;
+
   const postContext = String(
     (post.title || '') + ' ' + (post.contents || '') + ' ' + activity
   ).toLowerCase();
@@ -1021,13 +1108,14 @@ module.exports = async function handler(req, res) {
       if (!result || !result.ok) continue;
       for (const post of result.posts || []) candidates.push({ ...post, _station: result.station });
     }
-    candidates.sort(compareRepresentativeCandidates);
-    selected = candidates[0] || null;
+    const contextualCandidates=applyContinuousEventContext(candidates);
+    contextualCandidates.sort(compareRepresentativeCandidates);
+    selected = contextualCandidates[0] || null;
 
     if (selected) {
       const originalPostImageUrl=selected.imageUrl||'';
       const originalPostSheetImageUrl=selected.sheetImageUrl||'';
-      const chosenPostImage=choosePostImageCandidate(selected,candidates);
+      const chosenPostImage=choosePostImageCandidate(selected,contextualCandidates);
       selected={
         ...selected,
         originalPostImageUrl,
@@ -1237,6 +1325,8 @@ module.exports._internals = {
   parseTime,
   resolveActivityDate,
   resolveActivityDateInfo,
+  parseActivityDurationDays,
+  applyContinuousEventContext,
   activityPublishedAt,
   vodDetailConsistent,
   stableFingerprint,
