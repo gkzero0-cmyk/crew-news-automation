@@ -16,105 +16,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/crew-editorial-policy
-      - name: Patch editorial qualification and image handling
+      - name: Preserve truthful external-participation title
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          core_path = Path('internal/crew-news-batch-core.js')
-          core = core_path.read_text()
-
-          marker = "function strictCrewPost(post, crew, station) {"
-          helper = r'''function deriveExternalParticipationDisplaySummary(raw = '', crew = '') {
-            const text = String(raw || '').replace(/\s+/g, ' ').trim();
-            const crewToken = normalize(crew);
-            const re = /([가-힣A-Za-z0-9_]{2,20}?)(?:님)?(?:의)?\s*(?:콘텐츠|컨텐츠)/gi;
-            for (const match of text.matchAll(re)) {
-              const host = String(match[1] || '').trim();
-              if (!host || normalize(host) === crewToken) continue;
-              return host + ' 콘텐츠 참가';
-            }
-            return '외부 콘텐츠 참가';
-          }
-
-          '''
-          if 'function deriveExternalParticipationDisplaySummary' not in core:
-            if marker not in core:
-              raise SystemExit('strictCrewPost marker not found')
-            core = core.replace(marker, helper + marker, 1)
-
-          old_activity = r'''  const activityText = sourceTitle + '\n' + body;
-            const detectedActivity = detectActivity(activityText);
-            const conditionalOrAspirational = /(?:하고\s*싶|가고\s*싶|해보고\s*싶|되면|된다면|성공하면|달성하면|목표\s*달성|공약|도와\s*달|도와주|부탁|희망|바라|예정\s*희망)/i.test(activityText);'''
-          new_activity = r'''  const activityText = sourceTitle + '\n' + body;
-            const externalApplication = /(?:콘텐츠|컨텐츠|대회|합방|팀)[^.!?\n]{0,80}(?:지원(?:합니다|했|해|서|중)?|참가\s*신청|신청(?:합니다|했|해|서|중)?|지원서)|(?:지원(?:합니다|했|해|서|중)?|참가\s*신청|신청(?:합니다|했|해|서|중)?|지원서)[^.!?\n]{0,80}(?:콘텐츠|컨텐츠|대회|합방|팀)/i.test(activityText);
-            const participationConfirmed = /(?:최종\s*)?(?:선발|선정|합격)\s*(?:됐|되었|되었습니다|완료|확정|했|했습니다)|(?:참가|참여|출전)\s*(?:확정|합니다|해요|하게\s*됐|하게\s*되었습니다)/i.test(activityText);
-            const confirmationNegated = /(?:아직|미정|확정\s*[xX]|확정\s*아님|아닌|아니|여부|대기)[^.!?\n]{0,40}(?:선발|선정|합격|참가|참여|출전|확정)|(?:선발|선정|합격|참가|참여|출전|확정)[^.!?\n]{0,40}(?:아직|미정|[xX]|아님|아닌|아니|여부|대기)/i.test(activityText);
-            const unconfirmedExternalApplication = externalApplication && (!participationConfirmed || confirmationNegated);
-            if (!override && unconfirmedExternalApplication) return null;
-
-            const personalAvatarCelebration = /(?:뉴|새|신규|new)?\s*(?:오리지널\s*)?(?:아바타|모델|의상)|신의상|리뉴얼\s*(?:아바타|모델)/i.test(activityText) &&
-              /축하|공개|출시|나왔|예쁘|리뉴얼|데뷔/i.test(activityText);
-            const strongCrewEventInBody = /(?:면접|회의|합방|점호|여행|모집|대회|대결|콘텐츠|컨텐츠)[^.!?\n]{0,40}(?:진행|예정|확정|합니다|해요|있습니다|시작|참가|출전|모집|하기로)/i.test(body);
-            if (!override && personalAvatarCelebration && !strongCrewEventInBody) return null;
-
-            const detectedActivity = detectActivity(activityText);
-            const conditionalOrAspirational = /(?:하고\s*싶|가고\s*싶|해보고\s*싶|되면|된다면|성공하면|달성하면|목표\s*달성|공약|도와\s*달|도와주|부탁|희망|바라|예정\s*희망)/i.test(activityText);'''
-          if old_activity not in core:
-            raise SystemExit('activity block not found')
-          core = core.replace(old_activity, new_activity, 1)
-
-          old_summary = r'''  const representativeTier = leaderRepresentative ? 1 : 2;
-            const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
-            const summary = override || competitiveSummary || activity;'''
-          new_summary = r'''  const representativeTier = leaderRepresentative ? 1 : 2;
-            const externalParticipationSummary = externalApplication && participationConfirmed && !confirmationNegated
-              ? deriveExternalParticipationDisplaySummary(activityText, crew)
-              : '';
-            const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
-            const summary = override || externalParticipationSummary || competitiveSummary || activity;'''
-          if old_summary not in core:
-            raise SystemExit('summary block not found')
-          core = core.replace(old_summary, new_summary, 1)
-          core_path.write_text(core)
-
-          image_path = Path('api/image.js')
-          image = image_path.read_text()
-          old_crop = r'''function cropPlanForSheet(width, height) {
-            const w=Number(width)||0;
-            const h=Number(height)||0;
-            if (w < 80 || h < 80) return {crop:false,width:w,height:h};
-            const ratio=h/w;
-
-            // Ordinary thumbnails and mildly portrait images stay lossless.
-            if (ratio < 1.45) return {crop:false,width:w,height:h};
-
-            // Long poster: keep the upper 4:5 area where event title/characters are
-            // normally concentrated. This turns a very tall poster into a readable
-            // sheet thumbnail without touching the original image URL.
-            const targetHeight=Math.min(h,Math.max(1,Math.round(w*1.25)));
-            if (targetHeight >= Math.round(h*0.94)) return {crop:false,width:w,height:h};
-            return {crop:true,left:0,top:0,width:w,height:targetHeight};
-          }'''
-          new_crop = r'''function cropPlanForSheet(width, height) {
-            const w=Number(width)||0;
-            const h=Number(height)||0;
-            // Sheet representatives may contain important text anywhere in the image.
-            // Never destructively crop posters; let Google Sheets scale the full asset.
-            return {crop:false,width:w,height:h};
-          }'''
-          if old_crop not in image:
-            raise SystemExit('cropPlanForSheet block not found')
-          image = image.replace(old_crop, new_crop, 1)
-          image_path.write_text(image)
+          path = Path('internal/crew-news-batch-core.js')
+          text = path.read_text()
+          old = "  const displaySummary = manualDisplay || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);"
+          new = "  const displaySummary = manualDisplay || externalParticipationSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);"
+          if old not in text:
+            if new in text:
+              raise SystemExit(0)
+            raise SystemExit('displaySummary block not found')
+          path.write_text(text.replace(old, new, 1))
           PY
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add internal/crew-news-batch-core.js api/image.js
+          git add internal/crew-news-batch-core.js
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "fix: enforce crew news editorial policy [policy-patch]"
+          git commit -m "fix: preserve external host in crew news title [policy-patch]"
           git push origin HEAD:fix/crew-editorial-policy
