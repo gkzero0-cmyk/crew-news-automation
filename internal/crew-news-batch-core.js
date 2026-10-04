@@ -471,7 +471,8 @@ async function invokeCrewNews(req, params) {
   const fakeReq={
     method:'GET',
     url:'/api/crew-news?'+params.toString(),
-    headers
+    headers,
+    _soopMetrics:req && req._soopMetrics || null
   };
   const fakeRes={
     status(code){statusCode=Number(code)||500;return this;},
@@ -908,6 +909,14 @@ module.exports = async function handler(req, res) {
   const stations = safeStations(requestUrl.searchParams.get('stations') || '');
   if (!stations.length) return res.status(400).json({ error: 'invalid_stations' });
 
+  const soopMetrics = typeof crewNewsInternals.createSoopRequestMetrics === 'function'
+    ? crewNewsInternals.createSoopRequestMetrics()
+    : {};
+  req._soopMetrics = soopMetrics;
+  const snapshotSoopMetrics = () => typeof crewNewsInternals.snapshotSoopRequestMetrics === 'function'
+    ? crewNewsInternals.snapshotSoopRequestMetrics(soopMetrics)
+    : soopMetrics;
+
   const perPage = intParam(requestUrl.searchParams.get('per_page'), 30, 1, 50);
   const keyword = String(requestUrl.searchParams.get('keyword') || '').trim().slice(0, 120);
   const startDate = String(requestUrl.searchParams.get('start_date') || '').trim().slice(0, 32);
@@ -1118,7 +1127,8 @@ module.exports = async function handler(req, res) {
       degradedSources: degradedSources.length,
       preservePrevious: true,
       healthStatus: 'degraded',
-      rawCandidateCount
+      rawCandidateCount,
+      soopMetrics: snapshotSoopMetrics()
     });
   }
 
@@ -1136,6 +1146,7 @@ module.exports = async function handler(req, res) {
       staleSources.length === 0 &&
       degradedSources.length === 0,
     policyVersion: POLICY_VERSION,
+    soopMetrics: snapshotSoopMetrics(),
     strictCrew: crew || '',
     keyword,
     requested: stations.length,
