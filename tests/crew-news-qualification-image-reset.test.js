@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const enrichment = require('../lib/event-enrichment.js');
 const batch = require('../api/crew-news-batch.js');
+const imageProxy = require('../api/image.js');
 
 const personalCrewMap = enrichment.synthesizeCrewEvent([
   {
@@ -138,6 +139,54 @@ assert.match(
   noImageSelected.sheetImageUrl,
   /\/api\/blank-image$/,
   'a healthy event with no suitable image must send an explicit blank sheet image so the current Apps Script replaces stale media'
+);
+
+const unconfirmedExternalApplication = batch._internals.strictCrewPost({
+  id: '208908355',
+  title: '진드기 콘텐츠',
+  originalTitle: '진드기 콘텐츠',
+  author: '설빈달',
+  authorId: 'nsnowthemoon',
+  publishedAt: '2026-10-04 22:36:44',
+  boardName: '공지',
+  accessType: 'public',
+  contents: [
+    '릴파님의 콘텐츠에 진드기 팀으로 지원합니다.',
+    '아직 합격이나 참가 확정이 난 것은 아닙니다.'
+  ].join('\n'),
+  imageUrl: 'https://stimg.sooplive.com/NORMAL_BBS/4/26300024/75071791120962807.png'
+}, '진드기', 'nsnowthemoon');
+assert.equal(
+  unconfirmedExternalApplication,
+  null,
+  'an application to another broadcaster\'s content must not become crew news before selection/participation is confirmed'
+);
+
+const personalAvatarCelebration = batch._internals.strictCrewPost({
+  id: '208886779',
+  title: '머리퍼리 면접',
+  originalTitle: '머리퍼리 면접',
+  author: '비몽♪',
+  authorId: 'beemong',
+  publishedAt: '2026-10-04 19:20:26',
+  boardName: '공지',
+  accessType: 'public',
+  contents: [
+    '머리퍼리 크루원의 뉴 오리지널 아바타 공개를 축하합니다.',
+    '새 아바타 너무 예쁘게 잘 나왔어요!'
+  ].join('\n'),
+  imageUrl: 'https://stimg.sooplive.com/NORMAL_BBS/9/24931119/39901791109188051.png'
+}, '머리퍼리', 'beemong');
+assert.equal(
+  personalAvatarCelebration,
+  null,
+  'a personal avatar celebration must not be promoted to a crew interview/news item just because the title contains the crew name and an activity keyword'
+);
+
+assert.equal(
+  imageProxy._internals.cropPlanForSheet(1000, 1800).crop,
+  false,
+  'sheet image handling must preserve the full tall poster so bottom text is not destructively cropped'
 );
 
 console.log('crew-news qualification/image reset regression: ok');
