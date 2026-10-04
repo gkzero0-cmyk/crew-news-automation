@@ -23,18 +23,9 @@ function allowed(url) {
 function cropPlanForSheet(width, height) {
   const w=Number(width)||0;
   const h=Number(height)||0;
-  if (w < 80 || h < 80) return {crop:false,width:w,height:h};
-  const ratio=h/w;
-
-  // Ordinary thumbnails and mildly portrait images stay lossless.
-  if (ratio < 1.45) return {crop:false,width:w,height:h};
-
-  // Long poster: keep the upper 4:5 area where event title/characters are
-  // normally concentrated. This turns a very tall poster into a readable
-  // sheet thumbnail without touching the original image URL.
-  const targetHeight=Math.min(h,Math.max(1,Math.round(w*1.25)));
-  if (targetHeight >= Math.round(h*0.94)) return {crop:false,width:w,height:h};
-  return {crop:true,left:0,top:0,width:w,height:targetHeight};
+  // Sheet representatives may contain important text anywhere in the image.
+  // Never destructively crop posters; let Google Sheets scale the full asset.
+  return {crop:false,width:w,height:h};
 }
 
 async function fitImageForSheet(buffer, contentType) {
