@@ -26,4 +26,27 @@ assert.equal(
   'confirmed participation in another broadcaster\'s content must name the external content instead of implying the crew is the host'
 );
 
+const individualExternalUpPromo = batch._internals.strictCrewPost({
+  id: '209032075',
+  title: '장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+  originalTitle: '어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+  author: '비비안♡',
+  authorId: '8bibian8',
+  publishedAt: '2026-10-06 04:42:20',
+  boardName: '👍업👍',
+  accessType: 'public',
+  contents: [
+    '장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+    'https://www.sooplive.com/station/nemulumomo/post/208602017#comment122734167',
+    '크흠 황새 9m의 도전~'
+  ].join('\n'),
+  imageUrl: ''
+}, '장지수용소', '8bibian8');
+
+assert.equal(
+  individualExternalUpPromo,
+  null,
+  'an individual member promotion/UP request for an external content must not become crew news just because the crew name appears in the post'
+);
+
 console.log('external participation title regression: ok');
