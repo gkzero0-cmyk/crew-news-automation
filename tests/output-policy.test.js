@@ -65,7 +65,8 @@ function apply(payload) {
   };
   const out=apply(payload);
   assert.equal(out.selected.summary,'나들이');
-  assert.equal(out.selected.displayText,'장지수용소 - 나들이 (10/5) 📌');
+  assert.equal(out.selected.displaySummary,'장지수용소 나들이');
+  assert.equal(out.selected.displayText,'장지수용소 - 장지수용소 나들이 (10/5) 📌');
   assert.equal(out.selected.sheetImageUrl,'https://example.com/naduri.jpg');
 }
 
@@ -90,6 +91,30 @@ function apply(payload) {
   const out=apply(payload);
   assert.equal(out.selected.summary,'모집');
   assert.equal(out.selected.displayText,'테스트크루 - 모집 (10/6) 📌');
+}
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'천타버스',
+    selected:{
+      id:'old-concrete',
+      summary:'천타버스 추석특집',
+      displaySummary:'천타버스 추석특집',
+      displayDate:'9/26',
+      activityDate:'2026-09-26',
+      imageUrl:'https://example.com/chuseok.jpg',
+      sheetImageUrl:'https://example.com/chuseok.jpg'
+    },
+    results:[{posts:[{
+      id:'old-concrete',
+      originalTitle:'천타버스 추석특집',
+      contents:'천타버스 추석특집 진행합니다'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.displaySummary,'천타버스 추석특집');
+  assert.equal(out.selected.displayText,'천타버스 - 천타버스 추석특집 (9/26) 📌');
 }
 
 {
