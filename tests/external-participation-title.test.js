@@ -26,4 +26,60 @@ assert.equal(
   'confirmed participation in another broadcaster\'s content must name the external content instead of implying the crew is the host'
 );
 
+const individualExternalUpPromoPost = {
+  id: '209032075',
+  title: '장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+  originalTitle: '어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+  author: '비비안♡',
+  authorId: '8bibian8',
+  station: '8bibian8',
+  publishedAt: '2026-10-06 04:42:20',
+  boardName: '👍업👍',
+  accessType: 'public',
+  contents: [
+    '장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
+    'https://www.sooplive.com/station/nemulumomo/post/208602017#comment122734167',
+    '크흠 황새 9m의 도전~'
+  ].join('\n'),
+  imageUrl: ''
+};
+
+const individualExternalUpPromo = batch._internals.strictCrewPost(
+  individualExternalUpPromoPost,
+  '장지수용소',
+  '8bibian8'
+);
+assert.ok(individualExternalUpPromo, 'core candidate extraction may still parse the post before final editorial qualification');
+assert.equal(
+  batch._internals.isIndividualExternalPromotionSelected({
+    ok: true,
+    strictCrew: '장지수용소',
+    selected: individualExternalUpPromo,
+    results: [{ station: '8bibian8', ok: true, posts: [individualExternalUpPromoPost] }]
+  }),
+  true,
+  'an individual member UP/promotion post for an external content must be rejected at final crew-news qualification'
+);
+
+const collectiveExternalUpPromoPost = {
+  id: 'collective-up',
+  originalTitle: '릴파 콘텐츠 참가',
+  title: '진드기 릴파 콘텐츠 참가',
+  authorId: 'nsnowthemoon',
+  station: 'nsnowthemoon',
+  boardName: '👍업👍',
+  contents: '진드기 팀으로 참가합니다.',
+  publishedAt: '2026-10-06 05:00:00'
+};
+assert.equal(
+  batch._internals.isIndividualExternalPromotionSelected({
+    ok: true,
+    strictCrew: '진드기',
+    selected: { id: 'collective-up', station: 'nsnowthemoon' },
+    results: [{ station: 'nsnowthemoon', ok: true, posts: [collectiveExternalUpPromoPost] }]
+  }),
+  false,
+  'an UP-board post that explicitly says the crew/team participates together must remain eligible'
+);
+
 console.log('external participation title regression: ok');
