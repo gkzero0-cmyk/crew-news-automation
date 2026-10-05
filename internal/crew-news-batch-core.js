@@ -418,6 +418,19 @@ function postExtractionQuality(post) {
   return {score, bodyLength: body.length, complete: score >= 6};
 }
 
+function deriveExternalMatchAppearanceDisplaySummary(raw = '', crew = '') {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  const match = text.match(/(?:^|[\s:,(])([가-힣A-Za-z0-9_]{2,20})\s*vs\.?\s*([가-힣A-Za-z0-9_]{2,20})(?=$|[\s,.)])/i);
+  if (!match) return '';
+  if (!/(?:나갑니다|나가요|출연|참가|참여|출전)/i.test(text)) return '';
+  const left = String(match[1] || '').trim();
+  const right = String(match[2] || '').trim();
+  const crewToken = normalize(crew);
+  if (!left || !right || normalize(left).includes(crewToken) || normalize(right).includes(crewToken)) return '';
+  const action = /(?:나갑니다|나가요|출연)/i.test(text) ? '출연' : '참가';
+  return `${left} VS ${right} ${action}`;
+}
+
 function deriveExternalParticipationDisplaySummary(raw = '', crew = '') {
   const text = String(raw || '').replace(/\s+/g, ' ').trim();
   const crewToken = normalize(crew);
@@ -439,7 +452,10 @@ function strictCrewPost(post, crew, station) {
   const accessType = String(post.accessType || '');
   const id = String(post.id || '');
   const extraction = postExtractionQuality(post);
+  const postAuthorId = String(post.authorId || '').trim();
+  const stationOwnerId = String(station || '').trim();
 
+  if (postAuthorId && stationOwnerId && postAuthorId !== stationOwnerId) return null;
   if (accessType === 'favorite' || EXCLUDED_BOARD_RE.test(board)) return null;
 
   const crewToken = normalize(crew);
@@ -453,6 +469,11 @@ function strictCrewPost(post, crew, station) {
   if (!override && /방셀|당첨자|당첨\s*안내|보상|경품|상품|배송|배달|전달\s*완료|수령|정산/i.test(sourceTitle)) return null;
 
   const activityText = sourceTitle + '\n' + body;
+  const explicitlyUnconfirmedPlan = /확정(?:은|된\s*건)?\s*(?:아니|아님|전)|미정|수정될\s*수|고민\s*중|기획\s*중|논의\s*중|검토\s*중|하자고\s*(?:남기|말하)|할지\s*고민|생각\s*중/i.test(activityText);
+  const laterExplicitConfirmation = /(?:최종\s*)?확정\s*(?:됐|되었|되었습니다|입니다|완료)|일정\s*확정|하기로\s*(?:확정|했|했습니다)/i.test(activityText);
+  const questionOnlyPost = /질문|문의|궁금/i.test(sourceTitle) && !laterExplicitConfirmation;
+  if (!override && (questionOnlyPost || (explicitlyUnconfirmedPlan && !laterExplicitConfirmation))) return null;
+
   const nonNewsMediaPost = /AI\s*게시판/i.test(board) &&
     /썸네일|다시보기|리플레이|하이라이트|클립|후기/i.test(activityText);
   if (!override && nonNewsMediaPost) return null;
@@ -505,10 +526,11 @@ function strictCrewPost(post, crew, station) {
   const externalParticipationSummary = externalApplication && participationConfirmed && !confirmationNegated
     ? deriveExternalParticipationDisplaySummary(activityText, crew)
     : '';
+  const externalMatchAppearanceSummary = override ? '' : deriveExternalMatchAppearanceDisplaySummary(activityText, crew);
   const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);
-  const summary = override || externalParticipationSummary || competitiveSummary || activity;
+  const summary = override || externalParticipationSummary || externalMatchAppearanceSummary || competitiveSummary || activity;
   const manualDisplay = MANUAL_DISPLAY_SUMMARY[crew] && MANUAL_DISPLAY_SUMMARY[crew][id] || '';
-  const displaySummary = manualDisplay || externalParticipationSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);
+  const displaySummary = manualDisplay || externalParticipationSummary || externalMatchAppearanceSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);
   // Apps Script v4는 후보 허용 판정에서 제목/게시판에 크루명이 있어야 한다.
   // 모든 후보 제목을 "크루명 + 표시 요약"으로 전달하고 Apps Script가 첫 크루명만 제거하게 한다.
   // 이렇게 하면 후보 판정은 통과하면서 zero-width 문자를 전혀 쓰지 않는다.
