@@ -4,6 +4,7 @@ const core = require('../internal/crew-news-batch-core.js');
 const crewNewsHandler = require('../internal/crew-news.js');
 const enrichment = require('../lib/event-enrichment.js');
 const outputPolicy = require('../lib/output-policy.js');
+const vodPolicy = require('../lib/editorial-vod-policy.js');
 const {POLICY_VERSION}=require('../lib/version.js');
 
 const LEADER_BY_CREW = Object.freeze({
@@ -141,6 +142,42 @@ async function collectLeaderVods(req, leaderStation, activityDate) {
   }
 }
 
+async function attachEditorialVodFallback(req,payload) {
+  if (!payload || payload.ok!==true || !payload.selected || payload.preservePrevious===true) return payload;
+  if (String(payload.selected.imageUrl||'').trim()) return payload;
+  const crew=String(payload.strictCrew||'');
+  const leaderStation=LEADER_BY_CREW[crew]||'';
+  if (!leaderStation) return payload;
+
+  try {
+    const list=await invoke(crewNewsHandler,req,`/api/crew-news?station=${encodeURIComponent(leaderStation)}&mode=vods&per_page=20`);
+    if (list.statusCode<200 || list.statusCode>=300 || !list.body || list.body.ok!==true) return payload;
+    const candidate=vodPolicy.chooseVodCandidate(payload.selected,list.body.vods||[]);
+    if (!candidate || !candidate.id) return payload;
+
+    const detail=await invoke(crewNewsHandler,req,`/api/crew-news?station=${encodeURIComponent(leaderStation)}&mode=vod-detail&title_no=${encodeURIComponent(candidate.id)}`);
+    const vod=detail.body&&detail.body.vod;
+    if (!vod || !vod.imageUrl) return payload;
+
+    const selected={
+      ...payload.selected,
+      imageUrl:vod.imageUrl,
+      sheetImageUrl:vod.sheetImageUrl||vod.imageUrl,
+      imageSource:'leader_vod_editorial',
+      imageSelectionReason:'구체 활동명 일치 크루장 VOD',
+      imagePostId:'',
+      fallbackVodUrl:candidate.vodUrl||`https://vod.sooplive.com/player/${candidate.id}`
+    };
+    return outputPolicy.refreshFingerprintState(
+      {...payload,selected},
+      core._internals.stableFingerprint,
+      true
+    );
+  } catch (_) {
+    return payload;
+  }
+}
+
 function toCoreFingerprintInput(crew,event) {
   return {
     id:event.id,
@@ -274,6 +311,7 @@ module.exports=async function handler(req,res) {
       blankUrl:BLANK_SHEET_IMAGE_URL,
       stableFingerprint:core._internals.stableFingerprint
     });
+    body=await attachEditorialVodFallback(req,body);
   } catch (_) {
     body=captured.state.body;
   }
@@ -286,6 +324,7 @@ module.exports._internals={
   ...core._internals,
   ...enrichment,
   ...outputPolicy,
+  ...vodPolicy,
   safeStations,
   captureRes,
   sameEvent,
@@ -295,5 +334,6 @@ module.exports._internals={
   buildSelected,
   clearInvalidSelection,
   enrichPayload,
+  attachEditorialVodFallback,
   BLANK_SHEET_IMAGE_URL
 };
