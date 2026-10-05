@@ -61,4 +61,25 @@ assert.equal(
   'an individual member UP/promotion post for an external content must be rejected at final crew-news qualification'
 );
 
+const collectiveExternalUpPromoPost = {
+  id: 'collective-up',
+  originalTitle: '릴파 콘텐츠 참가',
+  title: '진드기 릴파 콘텐츠 참가',
+  authorId: 'nsnowthemoon',
+  station: 'nsnowthemoon',
+  boardName: '👍업👍',
+  contents: '진드기 팀으로 참가합니다.',
+  publishedAt: '2026-10-06 05:00:00'
+};
+assert.equal(
+  batch._internals.isIndividualExternalPromotionSelected({
+    ok: true,
+    strictCrew: '진드기',
+    selected: { id: 'collective-up', station: 'nsnowthemoon' },
+    results: [{ station: 'nsnowthemoon', ok: true, posts: [collectiveExternalUpPromoPost] }]
+  }),
+  false,
+  'an UP-board post that explicitly says the crew/team participates together must remain eligible'
+);
+
 console.log('external participation title regression: ok');
