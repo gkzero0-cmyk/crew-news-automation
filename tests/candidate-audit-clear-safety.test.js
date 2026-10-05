@@ -1,0 +1,17 @@
+'use strict';
+const assert=require('node:assert/strict');
+const batch=require('../api/crew-news-batch.js');
+const invalid={id:'209032075',station:'8bibian8',authorId:'8bibian8',author:'비비안♡',boardName:'👍업👍',publishedAt:'2026-10-06 04:42:20',originalTitle:'어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',title:'장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',contents:'개인 도전 UP 부탁드립니다',postUrl:'https://www.sooplive.com/station/8bibian8/post/209032075'};
+const selected={id:'208932989',station:'iamquaddurup',author:'장지수',publishedAt:'2026-10-05 02:37:47',sourcePublishedAt:'2026-10-05 02:37:47',activityDate:'2026-10-05',summary:'나들이',displaySummary:'장지수용소 나들이',postUrl:'https://www.sooplive.com/station/iamquaddurup/post/208932989'};
+const audited=batch._internals.attachCandidateAudit({ok:true,complete:true,strictCrew:'장지수용소',healthStatus:'healthy',preservePrevious:false,selected,results:[{station:'8bibian8',ok:true,posts:[invalid]}]});
+assert.equal(audited.candidateAudit[0].decision,'선택');
+assert.equal(audited.candidateAudit[0].id,'208932989');
+assert.ok(audited.candidateAudit.some(x=>x.id==='209032075'&&x.decision==='제외'&&/개인.*UP|개인.*홍보/.test(x.reason)));
+assert.equal(audited.eligibleCandidateCount,1);
+assert.equal(audited.clearVerified,false);
+const unsafe=batch._internals.attachCandidateAudit({ok:true,complete:true,strictCrew:'장지수용소',healthStatus:'healthy',preservePrevious:false,reliableEmpty:false,selected:null,results:[]});
+assert.equal(unsafe.clearVerified,false);
+const safe=batch._internals.attachCandidateAudit({ok:true,complete:true,strictCrew:'장지수용소',healthStatus:'healthy',preservePrevious:false,reliableEmpty:true,selected:null,failed:0,auxiliaryFailed:0,rawCandidateCount:0,results:[]});
+assert.equal(safe.clearVerified,true);
+assert.equal(safe.eligibleCandidateCount,0);
+console.log('candidate audit + clear safety regression: ok');
