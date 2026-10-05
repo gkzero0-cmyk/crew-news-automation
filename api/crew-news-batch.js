@@ -112,7 +112,7 @@ function isIndividualExternalPromotionSelected(payload) {
   if (!personalPromoBoard) return false;
 
   const text=`${post.originalTitle||post.title||''}\n${post.contents||''}`;
-  const explicitCrewWideParticipation=/(?:크루|크루원|멤버|전원|단체|팀)[^.!?\n]{0,30}(?:함께|같이|단체로|팀으로)[^.!?\n]{0,30}(?:참가|참여|출전)|(?:참가|참여|출전)[^.!?\n]{0,30}(?:크루|크루원|멤버|전원|단체|팀)/i.test(text);
+  const explicitCrewWideParticipation=/(?:크루|크루원|멤버|전원|단체|팀)(?:\s*단위|\s*전체|\s*으로|\s*이|\s*가|\s*은|\s*는|\s*과|\s*와)?[^.!?\n]{0,35}(?:참가|참여|출전)|(?:참가|참여|출전)[^.!?\n]{0,35}(?:크루|크루원|멤버|전원|단체|팀)(?:\s*단위|\s*전체|\s*으로)?/i.test(text);
   return !explicitCrewWideParticipation;
 }
 
