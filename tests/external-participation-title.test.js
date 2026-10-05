@@ -26,12 +26,13 @@ assert.equal(
   'confirmed participation in another broadcaster\'s content must name the external content instead of implying the crew is the host'
 );
 
-const individualExternalUpPromo = batch._internals.strictCrewPost({
+const individualExternalUpPromoPost = {
   id: '209032075',
   title: '장지수용소 어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
   originalTitle: '어인섬vs장지수용소 대전 컬러타일 1등한 안비비 도전',
   author: '비비안♡',
   authorId: '8bibian8',
+  station: '8bibian8',
   publishedAt: '2026-10-06 04:42:20',
   boardName: '👍업👍',
   accessType: 'public',
@@ -41,12 +42,23 @@ const individualExternalUpPromo = batch._internals.strictCrewPost({
     '크흠 황새 9m의 도전~'
   ].join('\n'),
   imageUrl: ''
-}, '장지수용소', '8bibian8');
+};
 
+const individualExternalUpPromo = batch._internals.strictCrewPost(
+  individualExternalUpPromoPost,
+  '장지수용소',
+  '8bibian8'
+);
+assert.ok(individualExternalUpPromo, 'core candidate extraction may still parse the post before final editorial qualification');
 assert.equal(
-  individualExternalUpPromo,
-  null,
-  'an individual member promotion/UP request for an external content must not become crew news just because the crew name appears in the post'
+  batch._internals.isIndividualExternalPromotionSelected({
+    ok: true,
+    strictCrew: '장지수용소',
+    selected: individualExternalUpPromo,
+    results: [{ station: '8bibian8', ok: true, posts: [individualExternalUpPromoPost] }]
+  }),
+  true,
+  'an individual member UP/promotion post for an external content must be rejected at final crew-news qualification'
 );
 
 console.log('external participation title regression: ok');
