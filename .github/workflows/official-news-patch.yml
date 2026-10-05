@@ -1,0 +1,96 @@
+name: Apply official crew-news patch
+
+on:
+  push:
+    branches:
+      - fix/official-crew-news-and-specific-titles
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[official-news-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/official-crew-news-and-specific-titles
+      - name: Patch official-author, confirmation and display-title rules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core_path = Path('internal/crew-news-batch-core.js')
+          core = core_path.read_text()
+
+          # 1) Only the station owner may supply an official member/leader post.
+          old = """  const extraction = postExtractionQuality(post);\n\n  if (accessType === 'favorite' || EXCLUDED_BOARD_RE.test(board)) return null;"""
+          new = """  const extraction = postExtractionQuality(post);\n  const postAuthorId = String(post.authorId || '').trim();\n  const stationOwnerId = String(station || '').trim();\n\n  if (postAuthorId && stationOwnerId && postAuthorId !== stationOwnerId) return null;\n  if (accessType === 'favorite' || EXCLUDED_BOARD_RE.test(board)) return null;"""
+          if old not in core:
+            raise SystemExit('core author marker not found')
+          core = core.replace(old, new, 1)
+
+          # 2) Explicitly unconfirmed/planning-only posts are not representative news.
+          old = """  const activityText = sourceTitle + '\\n' + body;\n  const nonNewsMediaPost = /AI\\s*게시판/i.test(board) &&"""
+          new = """  const activityText = sourceTitle + '\\n' + body;\n  const explicitlyUnconfirmedPlan = /확정(?:은|된\\s*건)?\\s*(?:아니|아님|전)|미정|수정될\\s*수|고민\\s*중|기획\\s*중|논의\\s*중|검토\\s*중|하자고\\s*(?:남기|말하)|할지\\s*고민|생각\\s*중/i.test(activityText);\n  const laterExplicitConfirmation = /(?:최종\\s*)?확정\\s*(?:됐|되었|되었습니다|입니다|완료)|일정\\s*확정|하기로\\s*(?:확정|했|했습니다)/i.test(activityText);\n  const questionOnlyPost = /질문|문의|궁금/i.test(sourceTitle) && !laterExplicitConfirmation;\n  if (!override && (questionOnlyPost || (explicitlyUnconfirmedPlan && !laterExplicitConfirmation))) return null;\n\n  const nonNewsMediaPost = /AI\\s*게시판/i.test(board) &&"""
+          if old not in core:
+            raise SystemExit('core activity marker not found')
+          core = core.replace(old, new, 1)
+
+          # 3) Preserve a named external match/event when the crew is appearing in it.
+          marker = "function deriveExternalParticipationDisplaySummary(raw = '', crew = '') {"
+          helper = r'''function deriveExternalMatchAppearanceDisplaySummary(raw = '', crew = '') {
+            const text = String(raw || '').replace(/\s+/g, ' ').trim();
+            const match = text.match(/(?:^|[\s:,(])([가-힣A-Za-z0-9_]{2,20})\s*vs\.?\s*([가-힣A-Za-z0-9_]{2,20})(?=$|[\s,.)])/i);
+            if (!match) return '';
+            if (!/(?:나갑니다|나가요|출연|참가|참여|출전)/i.test(text)) return '';
+            const left = String(match[1] || '').trim();
+            const right = String(match[2] || '').trim();
+            const crewToken = normalize(crew);
+            if (!left || !right || normalize(left).includes(crewToken) || normalize(right).includes(crewToken)) return '';
+            const action = /(?:나갑니다|나가요|출연)/i.test(text) ? '출연' : '참가';
+            return `${left} VS ${right} ${action}`;
+          }
+
+          '''
+          if 'function deriveExternalMatchAppearanceDisplaySummary' not in core:
+            if marker not in core:
+              raise SystemExit('external participation helper marker not found')
+            core = core.replace(marker, helper + marker, 1)
+
+          old = """  const externalParticipationSummary = externalApplication && participationConfirmed && !confirmationNegated\n    ? deriveExternalParticipationDisplaySummary(activityText, crew)\n    : '';\n  const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);\n  const summary = override || externalParticipationSummary || competitiveSummary || activity;\n  const manualDisplay = MANUAL_DISPLAY_SUMMARY[crew] && MANUAL_DISPLAY_SUMMARY[crew][id] || '';\n  const displaySummary = manualDisplay || externalParticipationSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);"""
+          new = """  const externalParticipationSummary = externalApplication && participationConfirmed && !confirmationNegated\n    ? deriveExternalParticipationDisplaySummary(activityText, crew)\n    : '';\n  const externalMatchAppearanceSummary = override ? '' : deriveExternalMatchAppearanceDisplaySummary(activityText, crew);\n  const competitiveSummary = override ? '' : deriveCompetitiveDisplaySummary(sourceTitle, crew, activity);\n  const summary = override || externalParticipationSummary || externalMatchAppearanceSummary || competitiveSummary || activity;\n  const manualDisplay = MANUAL_DISPLAY_SUMMARY[crew] && MANUAL_DISPLAY_SUMMARY[crew][id] || '';\n  const displaySummary = manualDisplay || externalParticipationSummary || externalMatchAppearanceSummary || (normalize(summary).includes(crewToken) ? summary : crew + ' ' + summary);"""
+          if old not in core:
+            raise SystemExit('core summary marker not found')
+          core = core.replace(old, new, 1)
+          core_path.write_text(core)
+
+          enrich_path = Path('lib/event-enrichment.js')
+          enrich = enrich_path.read_text()
+
+          # Enrichment must use the actual post author, not the board/station owner.
+          old = """  const board = String(post.boardName || '');\n  const combined = `${title}\\n${body}`;"""
+          new = """  const board = String(post.boardName || '');\n  const stationOwnerId = String(post.station || '').trim();\n  const postAuthorId = String(post.authorId || '').trim();\n  if (stationOwnerId && postAuthorId && stationOwnerId !== postAuthorId) return null;\n  const combined = `${title}\\n${body}`;\n\n  const explicitlyUnconfirmedPlan = /확정(?:은|된\\s*건)?\\s*(?:아니|아님|전)|미정|수정될\\s*수|고민\\s*중|기획\\s*중|논의\\s*중|검토\\s*중|하자고\\s*(?:남기|말하)|할지\\s*고민|생각\\s*중/i.test(combined);\n  const laterExplicitConfirmation = /(?:최종\\s*)?확정\\s*(?:됐|되었|되었습니다|입니다|완료)|일정\\s*확정|하기로\\s*(?:확정|했|했습니다)/i.test(combined);\n  const questionOnlyPost = /질문|문의|궁금/i.test(title) && !laterExplicitConfirmation;\n  if (questionOnlyPost || (explicitlyUnconfirmedPlan && !laterExplicitConfirmation)) return null;"""
+          if old not in enrich:
+            raise SystemExit('enrichment author marker not found')
+          enrich = enrich.replace(old, new, 1)
+
+          # Leader detection should be based on the actual author after owner validation.
+          old = """  const leader = String(post.station || post.authorId || '') === String(leaderStation || '');"""
+          new = """  const leader = String(post.authorId || post.station || '') === String(leaderStation || '');"""
+          if old not in enrich:
+            raise SystemExit('enrichment leader marker not found')
+          enrich = enrich.replace(old, new, 1)
+          enrich_path.write_text(enrich)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/crew-news-batch-core.js lib/event-enrichment.js
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "fix: require official authors and preserve named appearances [official-news-patch]"
+          git push origin HEAD:fix/official-crew-news-and-specific-titles
