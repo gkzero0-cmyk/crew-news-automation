@@ -95,6 +95,27 @@ function isExternalParticipationRecapSelected(payload) {
     /(?:면접|합방|회의|콘텐츠|컨텐츠)[^.!?\n]{0,30}(?:보고|하고)\s*왔/i.test(text);
 }
 
+function isIndividualExternalPromotionSelected(payload) {
+  if (!payload || !payload.selected) return false;
+  const post=selectedPostFromPayload(payload);
+  if (!post) return false;
+
+  const crew=String(payload.strictCrew||'');
+  const station=String(payload.selected.station||post.station||post.authorId||'').trim();
+  const leaderStation=String(LEADER_BY_CREW[crew]||'').trim();
+  if (station && leaderStation && station===leaderStation) return false;
+
+  const boardKey=String(post.boardName||'')
+    .toLowerCase()
+    .replace(/[^가-힣a-z0-9]+/g,'');
+  const personalPromoBoard=['업','up','재따봉','업게시판','up게시판'].includes(boardKey);
+  if (!personalPromoBoard) return false;
+
+  const text=`${post.originalTitle||post.title||''}\n${post.contents||''}`;
+  const explicitCrewWideParticipation=/(?:크루|크루원|멤버|전원|단체|팀)[^.!?\n]{0,30}(?:함께|같이|단체로|팀으로)[^.!?\n]{0,30}(?:참가|참여|출전)|(?:참가|참여|출전)[^.!?\n]{0,30}(?:크루|크루원|멤버|전원|단체|팀)/i.test(text);
+  return !explicitCrewWideParticipation;
+}
+
 function shouldAttemptEnrichment(payload) {
   if (!payload || payload.ok!==true || !payload.strictCrew) return false;
   if (isExternalParticipationRecapSelected(payload)) return true;
@@ -306,7 +327,11 @@ module.exports=async function handler(req,res) {
   let body=captured.state.body;
   try {
     const requestUrl=new URL(req.url||'/','https://crew-news.local');
-    body=await enrichPayload(req,body,requestUrl);
+    if (isIndividualExternalPromotionSelected(body)) {
+      body=clearInvalidSelection(body);
+    } else {
+      body=await enrichPayload(req,body,requestUrl);
+    }
     body=outputPolicy.applyOutputPolicy(body,{
       blankUrl:BLANK_SHEET_IMAGE_URL,
       stableFingerprint:core._internals.stableFingerprint
@@ -330,6 +355,7 @@ module.exports._internals={
   sameEvent,
   selectedPostFromPayload,
   isExternalParticipationRecapSelected,
+  isIndividualExternalPromotionSelected,
   shouldAttemptEnrichment,
   buildSelected,
   clearInvalidSelection,
