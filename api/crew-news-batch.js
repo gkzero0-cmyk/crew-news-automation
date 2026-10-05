@@ -3,6 +3,7 @@
 const core = require('../internal/crew-news-batch-core.js');
 const crewNewsHandler = require('../internal/crew-news.js');
 const enrichment = require('../lib/event-enrichment.js');
+const outputPolicy = require('../lib/output-policy.js');
 const {POLICY_VERSION}=require('../lib/version.js');
 
 const LEADER_BY_CREW = Object.freeze({
@@ -269,6 +270,10 @@ module.exports=async function handler(req,res) {
   try {
     const requestUrl=new URL(req.url||'/','https://crew-news.local');
     body=await enrichPayload(req,body,requestUrl);
+    body=outputPolicy.applyOutputPolicy(body,{
+      blankUrl:BLANK_SHEET_IMAGE_URL,
+      stableFingerprint:core._internals.stableFingerprint
+    });
   } catch (_) {
     body=captured.state.body;
   }
@@ -280,6 +285,7 @@ module.exports=async function handler(req,res) {
 module.exports._internals={
   ...core._internals,
   ...enrichment,
+  ...outputPolicy,
   safeStations,
   captureRes,
   sameEvent,
