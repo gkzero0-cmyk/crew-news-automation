@@ -17,6 +17,7 @@ assert.ok(code.includes('function resolveManualControl_('), 'manual control deci
 assert.ok(code.includes('function applyCrewControlUpdates_('), 'control state persistence helper must exist');
 assert.ok(code.includes('function isVerifiedClearPayload_('), 'verified-clear helper must exist');
 assert.ok(code.includes('function appendCandidateAuditBatch_('), 'candidate audit writer must exist');
+assert.ok(code.includes('function auditEntriesV180_('), 'verified empty runs must create an explicit audit entry');
 assert.ok(code.includes('payload.clearVerified === true'), 'no-news clearing must require server clearVerified');
 assert.ok(code.includes("control.mode = '자동'"), 'temporary lock must be able to release back to automatic mode');
 assert.ok(code.includes("normalizeControlMode_(control.mode) === '영구 고정'"), 'permanent manual lock must be honored');
@@ -63,7 +64,7 @@ const temporaryOlder = context.resolveManualControl_(
 );
 assert.equal(temporaryOlder.preserve, true, 'temporary lock must not release for an older candidate');
 
-const verifiedClear = context.isVerifiedClearPayload_({
+const verifiedClearPayload = {
   ok: true,
   complete: true,
   healthStatus: 'healthy',
@@ -74,8 +75,8 @@ const verifiedClear = context.isVerifiedClearPayload_({
   eligibleCandidateCount: 0,
   failed: 0,
   auxiliaryFailed: 0
-});
-assert.equal(verifiedClear, true, 'fully verified empty result may clear the sheet');
+};
+assert.equal(context.isVerifiedClearPayload_(verifiedClearPayload), true, 'fully verified empty result may clear the sheet');
 assert.equal(context.isVerifiedClearPayload_({
   ok: true,
   complete: true,
@@ -86,5 +87,10 @@ assert.equal(context.isVerifiedClearPayload_({
   failed: 0,
   auxiliaryFailed: 0
 }), false, 'missing clearVerified proof must never clear the sheet');
+
+const clearAudit = context.auditEntriesV180_('장지수용소', verifiedClearPayload);
+assert.equal(clearAudit.length, 1, 'verified empty runs must create one explicit clear audit entry');
+assert.equal(clearAudit[0].decision, '비움');
+assert.match(clearAudit[0].reason, /적합 후보 0건/);
 
 console.log('Apps Script control + clear guardrails regression: ok');
