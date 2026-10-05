@@ -82,4 +82,45 @@ assert.equal(
   'an UP-board post that explicitly says the crew/team participates together must remain eligible'
 );
 
+const recoveredPrevious = batch._internals.selectLatestEligibleCandidate([
+  individualExternalUpPromoPost,
+  {
+    id: '208932989',
+    title: '무수 합방',
+    originalTitle: '오늘',
+    author: '장지수',
+    authorId: 'iamquaddurup',
+    station: 'iamquaddurup',
+    publishedAt: '2026-10-05 02:37:47',
+    boardName: '🌎공지',
+    accessType: 'public',
+    postUrl: 'https://www.sooplive.com/station/iamquaddurup/post/208932989',
+    imageUrl: '',
+    sheetImageUrl: '',
+    contents: [
+      '도 재밌게 봐주셔서 감사합니다',
+      '장지수용소 나들이 부터',
+      '무수 합방까지 !!',
+      '오늘 아침부터 사실 몸이 너무 안좋아서',
+      '좀 약받아서 먹고 푹 쉬고 오겠습니다'
+    ].join('\n')
+  }
+], '장지수용소');
+assert.ok(recoveredPrevious, 'an invalid newest candidate must fall back to the next eligible crew-news candidate');
+assert.equal(recoveredPrevious.id, '208932989', 'the 10/5 outing must replace the invalid 10/6 personal UP promotion');
+
+const recoveredPayload = batch._internals.applyOutputPolicy({
+  ok: true,
+  strictCrew: '장지수용소',
+  selected: recoveredPrevious,
+  results: [],
+  previousFingerprint: '',
+  preservePrevious: false
+}, {
+  blankUrl: batch._internals.BLANK_SHEET_IMAGE_URL,
+  stableFingerprint: batch._internals.stableFingerprint
+});
+assert.equal(recoveredPayload.selected.displaySummary, '장지수용소 나들이');
+assert.equal(recoveredPayload.selected.displayText, '장지수용소 - 장지수용소 나들이 (10/5) 📌');
+
 console.log('external participation title regression: ok');

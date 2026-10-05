@@ -95,15 +95,11 @@ function isExternalParticipationRecapSelected(payload) {
     /(?:면접|합방|회의|콘텐츠|컨텐츠)[^.!?\n]{0,30}(?:보고|하고)\s*왔/i.test(text);
 }
 
-function isIndividualExternalPromotionSelected(payload) {
-  if (!payload || !payload.selected) return false;
-  const post=selectedPostFromPayload(payload);
-  if (!post) return false;
-
-  const crew=String(payload.strictCrew||'');
-  const station=String(payload.selected.station||post.station||post.authorId||'').trim();
+function isIndividualExternalPromotionPost(post, crew, station='') {
+  if (!post || !crew) return false;
+  const stationId=String(station||post.station||post.authorId||'').trim();
   const leaderStation=String(LEADER_BY_CREW[crew]||'').trim();
-  if (station && leaderStation && station===leaderStation) return false;
+  if (stationId && leaderStation && stationId===leaderStation) return false;
 
   const boardKey=String(post.boardName||'')
     .toLowerCase()
@@ -114,6 +110,47 @@ function isIndividualExternalPromotionSelected(payload) {
   const text=`${post.originalTitle||post.title||''}\n${post.contents||''}`;
   const explicitCrewWideParticipation=/(?:크루|크루원|멤버|전원|단체|팀)(?:\s*단위|\s*전체|\s*으로|\s*이|\s*가|\s*은|\s*는|\s*과|\s*와)?[^.!?\n]{0,35}(?:참가|참여|출전)|(?:참가|참여|출전)[^.!?\n]{0,35}(?:크루|크루원|멤버|전원|단체|팀)(?:\s*단위|\s*전체|\s*으로)?/i.test(text);
   return !explicitCrewWideParticipation;
+}
+
+function isIndividualExternalPromotionSelected(payload) {
+  if (!payload || !payload.selected) return false;
+  const post=selectedPostFromPayload(payload);
+  if (!post) return false;
+  const crew=String(payload.strictCrew||'');
+  const station=String(payload.selected.station||post.station||post.authorId||'').trim();
+  return isIndividualExternalPromotionPost(post,crew,station);
+}
+
+function selectLatestEligibleCandidate(rawPosts, crew) {
+  if (!crew) return null;
+  const candidates=[];
+  for (const rawPost of Array.isArray(rawPosts)?rawPosts:[]) {
+    if (!rawPost) continue;
+    const station=String(rawPost.station||rawPost.authorId||'').trim();
+    if (isIndividualExternalPromotionPost(rawPost,crew,station)) continue;
+    const candidate=core._internals.strictCrewPost(rawPost,crew,station);
+    if (!candidate) continue;
+    candidates.push({...candidate,station:station||candidate.station||candidate.authorId||''});
+  }
+  const contextual=core._internals.applyContinuousEventContext(candidates);
+  contextual.sort(core._internals.compareRepresentativeCandidates);
+  const selected=contextual[0]||null;
+  if (!selected) return null;
+
+  const originalPostImageUrl=selected.imageUrl||'';
+  const originalPostSheetImageUrl=selected.sheetImageUrl||'';
+  const chosenPostImage=core._internals.choosePostImageCandidate(selected,contextual);
+  return {
+    ...selected,
+    originalPostImageUrl,
+    originalPostSheetImageUrl,
+    imageUrl:chosenPostImage?chosenPostImage.imageUrl:'',
+    sheetImageUrl:chosenPostImage?chosenPostImage.sheetImageUrl:'',
+    imageSource:chosenPostImage?chosenPostImage.imageSource:'none',
+    imagePostId:chosenPostImage?chosenPostImage.imagePostId:'',
+    imageSuitabilityScore:chosenPostImage?chosenPostImage.imageSuitabilityScore:null,
+    imageRejected:Boolean(originalPostImageUrl&&!chosenPostImage)
+  };
 }
 
 function shouldAttemptEnrichment(payload) {
@@ -137,6 +174,28 @@ async function collectRawPosts(req, stations, crew, forceRefresh) {
     } catch (_) {}
   }
   return all;
+}
+
+async function recoverPreviousEligibleSelection(req,payload,requestUrl) {
+  if (!payload || payload.ok!==true || !payload.strictCrew) return payload;
+  const crew=String(payload.strictCrew||'');
+  const stations=safeStations(requestUrl.searchParams.get('stations')||'');
+  const rawPosts=await collectRawPosts(req,stations,crew,requestUrl.searchParams.get('refresh')==='1');
+  const recovered=selectLatestEligibleCandidate(rawPosts,crew);
+  if (!recovered) return clearInvalidSelection(payload);
+  return {
+    ...payload,
+    healthStatus:'healthy',
+    preservePrevious:false,
+    suspiciousEmpty:false,
+    reliableEmpty:false,
+    selected:recovered,
+    selectedFingerprint:'',
+    unchanged:false,
+    shouldWrite:true,
+    updateAction:'write',
+    eventClusterVersion:'event-cluster-v1'
+  };
 }
 
 async function collectLeaderVods(req, leaderStation, activityDate) {
@@ -328,7 +387,7 @@ module.exports=async function handler(req,res) {
   try {
     const requestUrl=new URL(req.url||'/','https://crew-news.local');
     if (isIndividualExternalPromotionSelected(body)) {
-      body=clearInvalidSelection(body);
+      body=await recoverPreviousEligibleSelection(req,body,requestUrl);
     } else {
       body=await enrichPayload(req,body,requestUrl);
     }
@@ -355,7 +414,10 @@ module.exports._internals={
   sameEvent,
   selectedPostFromPayload,
   isExternalParticipationRecapSelected,
+  isIndividualExternalPromotionPost,
   isIndividualExternalPromotionSelected,
+  selectLatestEligibleCandidate,
+  recoverPreviousEligibleSelection,
   shouldAttemptEnrichment,
   buildSelected,
   clearInvalidSelection,
