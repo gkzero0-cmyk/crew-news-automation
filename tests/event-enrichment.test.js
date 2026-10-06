@@ -73,4 +73,16 @@ const jailWithImage = enrichment.attachBestImage(jail, [], [
 assert.strictEqual(jailWithImage.imageSource, 'leader_vod_same_day');
 assert.strictEqual(jailWithImage.fallbackVodUrl, 'https://vod.sooplive.com/player/208336221');
 
+const jaraseomInternRecruitment = enrichment.synthesizeCrewEvent([
+  {
+    id:'209068529',station:'dstv',authorId:'dstv',author:'빅윈',
+    title:'자라섬 인턴 모집 안내',publishedAt:'2026-10-06 19:00:28',boardName:'공지사항',
+    contents:'자라섬 인턴 모집합니다. 오늘 지원자 면접 진행합니다.',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/2788491/95151791280713322.png'
+  }
+], '자라섬', 'dstv');
+assert.ok(jaraseomInternRecruitment, 'Jaraseom intern recruitment should be synthesized');
+assert.strictEqual(jaraseomInternRecruitment.activity, '인턴 모집', 'recruitment purpose must outrank interview step');
+assert.strictEqual(jaraseomInternRecruitment.displaySummary, '자라섬 인턴 모집');
+
 console.log('event-enrichment tests passed');
