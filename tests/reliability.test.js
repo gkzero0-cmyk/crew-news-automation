@@ -4,7 +4,7 @@ const assert=require('assert');
 const batch=require('../api/crew-news-batch.js')._internals;
 const {APP_VERSION,POLICY_VERSION}=require('../lib/version.js');
 assert.strictEqual(APP_VERSION,'1.6.0');
-assert.strictEqual(POLICY_VERSION,'crew-automation-v1.6-server');
+assert.strictEqual(POLICY_VERSION,'representative-v6.5-server');
 function date(raw,published){ return batch.resolveActivityDateInfo(raw,published); }
 
 assert.deepStrictEqual(date('9월 30일 진드기 여행','2026-09-29 18:00:00'),{date:'2026-09-30',source:'explicit-korean'});
