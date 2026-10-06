@@ -118,6 +118,32 @@ function apply(payload) {
 }
 
 {
+  const payload={
+    ok:true,
+    strictCrew:'천타버스',
+    selected:{
+      id:'209091397',
+      summary:'합격',
+      displaySummary:'천타버스 합격',
+      displayDate:'10/6',
+      activityDate:'2026-10-06',
+      imageUrl:'https://example.com/curling.png',
+      sheetImageUrl:'https://example.com/curling.png'
+    },
+    results:[{posts:[{
+      id:'209091397',
+      originalTitle:'릴파의 VR 포인트 컬링 대회 출전 합격을 축하합니다!',
+      contents:'우승 가즈아ㅏㅏㅏㅏㅏㅏㅏㅏ'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'릴파의 VR 포인트 컬링 대회 출전 합격 축하');
+  assert.equal(out.selected.displaySummary,'릴파의 VR 포인트 컬링 대회 출전 합격 축하');
+  assert.equal(out.selected.displayText,'천타버스 - 릴파의 VR 포인트 컬링 대회 출전 합격 축하 (10/6) 📌');
+  assert.equal(out.selected.sheetImageUrl,'https://example.com/curling.png');
+}
+
+{
   const result=policy.ensureBlankImageDirective({
     ok:true,
     strictCrew:'테스트',
