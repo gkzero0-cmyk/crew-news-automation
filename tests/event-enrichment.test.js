@@ -85,4 +85,6 @@ assert.ok(jaraseomInternRecruitment, 'Jaraseom intern recruitment should be synt
 assert.strictEqual(jaraseomInternRecruitment.activity, '인턴 모집', 'recruitment purpose must outrank interview step');
 assert.strictEqual(jaraseomInternRecruitment.displaySummary, '자라섬 인턴 모집');
 
+assert.deepStrictEqual(enrichment.detectSpecificActivity('내일은 ZZAM지트 합방 Moo Who?! 합니다!'), {activity:'Moo Who? 합방', specificity:96}, 'Moo Who? proper name must outrank generic collaboration');
+
 console.log('event-enrichment tests passed');
