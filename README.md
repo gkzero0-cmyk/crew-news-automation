@@ -53,23 +53,27 @@ Apps Script의 정상 갱신 경로는 `/api/crew-news-all`을 한 번 호출해
 ### 실제 Apps Script 실행본 확인
 
 GitHub/Vercel 배포는 Google Apps Script 편집기의 코드를 자동으로 갱신하지 않습니다.
-현재 운영 전환 파일은 `apps-script/PolicySyncV182.gs`이며, 기존 `Code.gs + ControlAuditV180.gs + StyleSelfHealV181.gs`를 그대로 재사용합니다.
+현재 운영 실행본은 `Code.gs + ControlAuditV180.gs + StyleSelfHealV181.gs` 조합이며,
+`StyleSelfHealV181.gs`의 `refreshCrewNewsV181` 트리거가 `CREW_AUTOMATION.TRIGGER_MINUTES`를 그대로 사용합니다.
 
-Apps Script 프로젝트에 `PolicySyncV182.gs`를 추가한 뒤 `installCrewNewsPolicySyncV182()`을 한 번 실행하면:
+`Code.gs`의 기준 주기는 **30분**입니다. 이 값은 SOOP/API 조회량, Vercel 호출량, 시트 쓰기 횟수를 줄이면서 크루 소식 갱신 속도를 유지하기 위해 합의한 운영 최적화 값입니다.
+`installCrewNewsStyleSelfHealV181()`을 실행하면 `refreshCrewNewsV181` 하나를 이 **30분 주기**로 설치합니다.
 
-- 기존 `refreshCrewNews`, `refreshCrewNewsV180`, `refreshCrewNewsV181`, `refreshCrewNewsV182` 중복 트리거 제거
-- `refreshCrewNewsV182` 하나를 **10분 주기**로 설치
-- 기존 v1.8.1의 단일 batch 조회, 제어/판정 이력, 색상 자가복구 기능 유지
-- 실행본 식별자를 `crew-apps-script-v1.8.2`로 기록
+- 기존 v1.8.1의 단일 batch 조회 유지
+- 자동/임시 고정/영구 고정 제어 유지
+- 후보 판정 이력 유지
+- 색상 자가복구 유지
+- 실행본 식별자 `crew-apps-script-v1.8.1` 유지
 
-Vercel 서버 정책 `representative-v6.5-server`와 Apps Script 실행 버전은 별도로 관리합니다.
+Vercel 서버 정책 `representative-v6.5-server`와 Apps Script 실행 버전/주기는 별도로 관리합니다.
+서버 정책을 갱신하기 위해 Apps Script 주기를 변경하지 않습니다.
 
 완료된 실행은 `자동화 상태`의 진단값으로 확인합니다.
 
 | 항목 | 정상 통합 조회 값 / 의미 |
 | --- | --- |
 | FetchMode | `single-batch-v1` |
-| ScriptVersion | `crew-apps-script-v1.8.2` |
+| ScriptVersion | `crew-apps-script-v1.8.1` |
 | APIBase | `https://crew-news-automation.vercel.app` |
 | FetchRequestCount | `1` (실제 URL Fetch 시도 수, 실패 포함) |
 | FallbackRequestCount | `0` |
