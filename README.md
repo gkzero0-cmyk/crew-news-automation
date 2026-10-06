@@ -11,7 +11,7 @@
 - `/api/crew-news-batch` — 크루별 대표 소식 최종 판정
 - `/api/image` — 검증된 SOOP 이미지/VOD 썸네일 프록시
 
-현재 서버 정책: `crew-automation-v1.6-server`
+현재 서버 정책: `representative-v6.5-server`
 
 버전 정보는 `lib/version.js`를 단일 기준으로 사용합니다. API 상태/배치 응답과 회귀 테스트가 같은 정책 버전을 참조합니다.
 
@@ -27,7 +27,6 @@
 
 이 저장소를 별도 Vercel Project로 연결하고 Root Directory는 저장소 루트(`./`)를 사용합니다.
 
-
 ## 대표 소식 건강 상태
 
 배치 응답은 대표 소식의 상태를 `healthStatus`로 구분합니다.
@@ -39,8 +38,6 @@
 
 `preservePrevious=true`이면 시트 자동화는 기존 정상 대표 소식을 삭제하거나 빈 값으로 덮어쓰지 않아야 합니다.
 `selectedFingerprint`가 이전 저장값과 같으면 제목/날짜/이미지 셀 재쓰기를 생략할 수 있습니다.
-
-
 
 ### 통합 조회 비용 절감
 
@@ -55,20 +52,24 @@ Apps Script의 정상 갱신 경로는 `/api/crew-news-all`을 한 번 호출해
 
 ### 실제 Apps Script 실행본 확인
 
-`apps-script/Code.gs`의 `ScriptVersion=crew-apps-script-v1.7.0`은 실행 진단 버전입니다.
-Vercel 서버 정책 `crew-automation-v1.6-server`와는 별도로 관리합니다.
 GitHub/Vercel 배포는 Google Apps Script 편집기의 코드를 자동으로 갱신하지 않습니다.
+현재 운영 전환 파일은 `apps-script/PolicySyncV182.gs`이며, 기존 `Code.gs + ControlAuditV180.gs + StyleSelfHealV181.gs`를 그대로 재사용합니다.
 
-이미 10분 트리거가 설치되어 있다면 원본 시트의 **확장 프로그램 → Apps Script**에서
-기존 `Code.gs` 전체를 이 파일로 교체하고 저장한 뒤 `refreshCrewNews`를 한 번 실행합니다.
-기존 트리거를 다시 설치하거나 fingerprint를 초기화할 필요는 없습니다.
+Apps Script 프로젝트에 `PolicySyncV182.gs`를 추가한 뒤 `installCrewNewsPolicySyncV182()`을 한 번 실행하면:
 
-완료된 실행은 `자동화 상태`의 A16:B22에 다음 진단값을 기록합니다.
+- 기존 `refreshCrewNews`, `refreshCrewNewsV180`, `refreshCrewNewsV181`, `refreshCrewNewsV182` 중복 트리거 제거
+- `refreshCrewNewsV182` 하나를 **10분 주기**로 설치
+- 기존 v1.8.1의 단일 batch 조회, 제어/판정 이력, 색상 자가복구 기능 유지
+- 실행본 식별자를 `crew-apps-script-v1.8.2`로 기록
+
+Vercel 서버 정책 `representative-v6.5-server`와 Apps Script 실행 버전은 별도로 관리합니다.
+
+완료된 실행은 `자동화 상태`의 진단값으로 확인합니다.
 
 | 항목 | 정상 통합 조회 값 / 의미 |
 | --- | --- |
 | FetchMode | `single-batch-v1` |
-| ScriptVersion | `crew-apps-script-v1.7.0` |
+| ScriptVersion | `crew-apps-script-v1.8.2` |
 | APIBase | `https://crew-news-automation.vercel.app` |
 | FetchRequestCount | `1` (실제 URL Fetch 시도 수, 실패 포함) |
 | FallbackRequestCount | `0` |
@@ -78,8 +79,7 @@ GitHub/Vercel 배포는 Google Apps Script 편집기의 코드를 자동으로 �
 일부 크루만 개별 조회했으면 `single-batch-v1+per-crew-fallback`, 통합 요청 자체가
 실패하여 개별 조회로 전환했으면 `per-crew-fallback`입니다. 단순 설치로는 실행 증거를
 만들지 않습니다. FetchMode만으로 소식의 건강 상태를 판단하지 말고 각 크루의
-HealthStatus와 RunOutcome도 확인하세요. ScriptVersion은 실행본 식별자이며 전체 파일의
-암호학적 checksum은 아닙니다. 전체 코드 일치 여부는 편집기 소스와 이 파일을 비교합니다.
+HealthStatus와 RunOutcome도 확인하세요.
 
 ### 2026-10-02 분리 점검
 
@@ -91,14 +91,8 @@ HealthStatus와 RunOutcome도 확인하세요. ScriptVersion은 실행본 식별
 - 두 프로젝트의 Vercel team은 동일합니다. 이 분리는 별도 계정/팀의 사용량 한도 분리를 뜻하지 않습니다.
 - 팬사이트 저장소에는 이전 `api/crew-news*.js`와 `crew-automation/` 복사본이 남아 있습니다.
   전용 저장소가 이 복사본을 import하지는 않습니다. 사용 여부 감사 없이 삭제하지 않았습니다.
-- 실제 시트의 17:59:43 KST 실행은 이전 PolicyVersion이며 FetchMode가 없어,
-  Apps Script 최신 코드 교체 및 다음 실행 검증은 아직 완료되지 않았습니다.
 
-검증: 새 실행 진단 테스트 4개 시나리오 통과. 기존 `tests/reliability.test.js:182`의
-imageSourceFor 테스트는 이번 수정 전후 모두 `post !== vod`로 실패합니다.
-이번 변경은 서버 이미지 판정 코드를 수정하지 않습니다.
-
-SOOP 원본 조회 자체는 각 크루 검증을 위해 계속 필요하므로, 이 변경의 주 목적은
+SOOP 원본 조회 자체는 각 크루 검증을 위해 계속 필요하므로, 통합 조회 최적화의 주 목적은
 Vercel 함수 호출 오버헤드와 Apps Script URL Fetch 호출 수를 줄이는 것입니다.
 
 ### 시트 쓰기 최소화
@@ -112,20 +106,17 @@ Apps Script는 마지막으로 저장한 fingerprint를 `previous_fingerprint` q
 
 최초 호출처럼 이전 fingerprint가 없으면 정상 대표 소식은 `write`로 처리합니다.
 
-
-<!-- Deployment trigger note: refresh Production after v1.6 fingerprint write-decision merge. -->
-
+<!-- Deployment trigger note: refresh Production after representative-v6.5 policy merge. -->
 
 ## Apps Script 백업
 
-실제 Google Sheet 자동화 소스는 `apps-script/Code.gs`에 백업합니다.
+실제 Google Sheet 자동화 소스는 `apps-script/Code.gs`와 보조 실행 파일들에 백업합니다.
 
 - `previous_fingerprint`를 배치 API에 전달
 - `skip_unchanged`이면 뉴스/이미지 셀 쓰기 생략
 - `preserve_previous`이면 기존 정상값 유지
 - 정상적인 `no_news`에서만 기존 소식/이미지 제거
 - 숨김 `자동화 상태` 시트에 `Fingerprint / UpdateAction / HealthStatus` 진단값 기록
-
-Google Apps Script 프로젝트가 GitHub와 자동 동기화되는 구조는 아니므로, 실제 Code.gs를 변경한 경우 이 백업도 함께 갱신해야 합니다.
 - 상태 시트의 `원문게시일`은 실제 게시글 업로드 시각(`sourcePublishedAt`)을 기록하고, 메인 소식의 `(M/D)` 표시는 활동일(`activityDate`)을 사용합니다.
 
+Google Apps Script 프로젝트가 GitHub와 자동 동기화되는 구조는 아니므로, 실제 실행 파일을 변경한 경우 저장소 백업과 실행본을 함께 확인해야 합니다.
