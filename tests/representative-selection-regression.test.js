@@ -76,4 +76,49 @@ assert.strictEqual(
   'degraded upstream data must keep preserve-previous protection and skip enrichment'
 );
 
+
+const linkedPromoSelected = {
+  id: '209114553', strictActivity: '모집', displaySummary: '자라섬 모집',
+  activityDate: '2026-10-07', sourcePublishedAt: '2026-10-07 03:24:56'
+};
+const linkedLeaderEvent = {
+  id: '209068529', activity: '버추얼 크루원 인턴 모집', displaySummary: '자라섬 버추얼 크루원 인턴 모집',
+  activityDate: '2026-10-06', sourcePublishedAt: '2026-10-06 19:00:28', representativeTier: 1, isCrewLeader: true
+};
+const linkedPromoPost = {
+  id: '209114553',
+  contents: '자라섬 크루 인턴 모집 합니다 :) 뻐꾸기 많이 부탁드려요! https://www.sooplive.com/station/dstv/post/209068529'
+};
+assert.strictEqual(
+  batch._internals.sameEvent(linkedPromoSelected, linkedLeaderEvent, linkedPromoPost),
+  true,
+  'a newer member promo that directly links the representative crew post must remain the same event across adjacent dates'
+);
+assert.strictEqual(
+  batch._internals.sameEvent(
+    {...linkedPromoSelected, strictActivity:'정기회의', displaySummary:'자라섬 정기회의'},
+    linkedLeaderEvent,
+    {id:'new-event', contents:'오늘은 자라섬 정기회의 진행합니다'}
+  ),
+  false,
+  'a genuinely different newer activity must not be pulled back to an older leader post'
+);
+
+assert.strictEqual(
+  shouldAttemptEnrichment({
+    ok:true,
+    strictCrew:'자라섬',
+    healthStatus:'healthy',
+    preservePrevious:false,
+    selected:{id:'209114553',summary:'모집',displaySummary:'자라섬 모집',imageUrl:'https://example.com/member.png',activityDate:'2026-10-07'},
+    results:[{posts:[{
+      id:'209114553',
+      originalTitle:'261007 오늘',
+      contents:'자라섬 크루 인턴 모집 합니다. 뻐꾸기 부탁드려요! https://www.sooplive.com/station/dstv/post/209068529'
+    }]}]
+  }),
+  true,
+  'a selected post that directly links another SOOP post must trigger representative-source enrichment'
+);
+
 console.log('representative-selection regression: ok');
