@@ -87,4 +87,14 @@ assert.strictEqual(jaraseomInternRecruitment.displaySummary, '자라섬 인턴 �
 
 assert.deepStrictEqual(enrichment.detectSpecificActivity('내일은 ZZAM지트 합방 Moo Who?! 합니다!'), {activity:'Moo Who? 합방', specificity:96}, 'Moo Who? proper name must outrank generic collaboration');
 
+
+const jaraseomLinkedRecruitment = enrichment.synthesizeCrewEvent([
+  {id:'209068529',station:'dstv',authorId:'dstv',title:'자라섬크루 버추얼 크루원 모집합니다',originalTitle:'자라섬크루 버추얼 크루원 모집합니다',publishedAt:'2026-10-06 19:00:28',boardName:'공지사항',contents:'일단 모집 공지 올렸습니다! 인턴제로 진행합니다. 평소 버추얼 크루를 해보고 싶었던 분들은 댓글로 신청해주세요. 1차 댓글 확인, 2차 면접 진행',imageUrl:'https://example.com/jaraseom-original.png',sheetImageUrl:'https://example.com/jaraseom-original.png'},
+  {id:'209114553',station:'star124',authorId:'star124',title:'261007 오늘',originalTitle:'261007 오늘',publishedAt:'2026-10-07 03:24:56',boardName:'공지사항',contents:'아 그리고 자라섬 크루 인턴 모집 합니다 :) 뻐꾸기 많이 부탁드려요! https://www.sooplive.com/station/dstv/post/209068529 감사합니다!',imageUrl:'https://example.com/member-promo.png',sheetImageUrl:'https://example.com/member-promo.png'}
+], '자라섬', 'dstv');
+assert.ok(jaraseomLinkedRecruitment, 'linked recruitment event should be synthesized');
+assert.strictEqual(jaraseomLinkedRecruitment.id, '209068529', 'leader original should represent the linked recruitment event');
+assert.strictEqual(jaraseomLinkedRecruitment.activity, '버추얼 크루원 인턴 모집', 'specific recruitment purpose should be preserved');
+assert.strictEqual(jaraseomLinkedRecruitment.imageUrl, 'https://example.com/jaraseom-original.png', 'representative original image should beat member promo image');
+
 console.log('event-enrichment tests passed');
