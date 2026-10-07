@@ -63,13 +63,33 @@ function displayDate(iso='') {
   return m ? `${Number(m[1])}/${Number(m[2])}` : '';
 }
 
-function sameEvent(coreSelected,event) {
+function sameEvent(coreSelected,event,sourcePost=null) {
   if (!coreSelected || !event) return false;
-  const coreDate=String(coreSelected.activityDate||'').slice(0,10);
-  if (!coreDate || coreDate!==event.activityDate) return false;
+
+  const eventId=String(event.id||'').trim();
+  if (/^[0-9]+$/.test(eventId) && sourcePost) {
+    const sourceText=[sourcePost.originalTitle,sourcePost.title,sourcePost.contents,sourcePost.postUrl]
+      .filter(Boolean).join('\n');
+    if (sourceText.includes('/post/'+eventId)) return true;
+  }
+
   const coreText=String(coreSelected.displaySummary||coreSelected.summary||'');
-  return enrichment.normalize(coreText).includes(enrichment.normalize(event.activity)) ||
-    enrichment.normalize(event.displaySummary).includes(enrichment.normalize(coreSelected.summary||''));
+  const coreNorm=enrichment.normalize(coreText);
+  const eventActivityNorm=enrichment.normalize(event.activity||'');
+  const eventDisplayNorm=enrichment.normalize(event.displaySummary||'');
+  const coreSummaryNorm=enrichment.normalize(coreSelected.summary||'');
+  const activityMatches=Boolean(
+    coreNorm && eventActivityNorm && (
+      coreNorm.includes(eventActivityNorm) ||
+      eventActivityNorm.includes(coreNorm) ||
+      (eventDisplayNorm && coreSummaryNorm && eventDisplayNorm.includes(coreSummaryNorm))
+    )
+  );
+  if (!activityMatches) return false;
+
+  const coreDate=String(coreSelected.activityDate||'').slice(0,10);
+  const eventDate=String(event.activityDate||'').slice(0,10);
+  return Boolean(coreDate && eventDate && coreDate===eventDate);
 }
 
 function selectedPostFromPayload(payload) {
@@ -153,9 +173,20 @@ function selectLatestEligibleCandidate(rawPosts, crew) {
   };
 }
 
+function hasLinkedRepresentativeSourceSelected(payload) {
+  if (!payload || !payload.selected) return false;
+  const post=selectedPostFromPayload(payload);
+  if (!post) return false;
+  const selectedId=String(payload.selected.id||'').trim();
+  const text=[post.originalTitle,post.title,post.contents,post.postUrl].filter(Boolean).join('\n');
+  const matches=[...text.matchAll(/https?:\/\/(?:www\.)?sooplive\.com\/station\/[^\s/]+\/post\/(\d+)/gi)];
+  return matches.some(match=>String(match[1]||'') && String(match[1])!==selectedId);
+}
+
 function shouldAttemptEnrichment(payload) {
   if (!payload || payload.ok!==true || !payload.strictCrew) return false;
   if (isExternalParticipationRecapSelected(payload)) return true;
+  if (hasLinkedRepresentativeSourceSelected(payload)) return true;
   if (!enrichment.needsEnrichment(payload.selected)) return false;
   if (payload.preservePrevious===true && payload.healthStatus!=='suspicious_empty') return false;
   return true;
@@ -334,7 +365,7 @@ async function enrichPayload(req, payload, requestUrl) {
   const event=enrichment.synthesizeCrewEvent(rawPosts,crew,leaderStation);
   if (!event) return invalidCore ? clearInvalidSelection(payload) : payload;
 
-  const shouldUse=invalidCore || enrichment.shouldReplaceCore(payload.selected,event) || sameEvent(payload.selected,event);
+  const shouldUse=invalidCore || enrichment.shouldReplaceCore(payload.selected,event) || sameEvent(payload.selected,event,selectedPostFromPayload(payload));
   if (!shouldUse) return payload;
 
   let enrichedEvent={...event};
@@ -418,6 +449,7 @@ module.exports._internals={
   isIndividualExternalPromotionSelected,
   selectLatestEligibleCandidate,
   recoverPreviousEligibleSelection,
+  hasLinkedRepresentativeSourceSelected,
   shouldAttemptEnrichment,
   buildSelected,
   clearInvalidSelection,
