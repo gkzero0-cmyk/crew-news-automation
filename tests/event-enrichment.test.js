@@ -97,4 +97,11 @@ assert.strictEqual(jaraseomLinkedRecruitment.id, '209068529', 'leader original s
 assert.strictEqual(jaraseomLinkedRecruitment.activity, '버추얼 크루원 인턴 모집', 'specific recruitment purpose should be preserved');
 assert.strictEqual(jaraseomLinkedRecruitment.imageUrl, 'https://example.com/jaraseom-original.png', 'representative original image should beat member promo image');
 
+
+assert.deepStrictEqual(
+  enrichment.detectSpecificActivity('오늘은 저녁 8시 ZZAM지트에서 PEAK 합방 갑니다!!'),
+  {activity:'PEAK 합방', specificity:98},
+  'PEAK proper name must outrank generic collaboration'
+);
+
 console.log('event-enrichment tests passed');
