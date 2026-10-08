@@ -155,4 +155,37 @@ assert.equal(
   'an external named match appearance must preserve the event names instead of collapsing to generic 자라섬 대결'
 );
 
+
+const jindeugiPersonalBersudaPost = batch._internals.strictCrewPost({
+  id: '209230045',
+  station: 'mingkymya',
+  authorId: 'mingkymya',
+  author: '이루희',
+  title: '10/09(금) 14시::버수다 극혐 맞춤법 월드컵 편 w.반타',
+  originalTitle: '10/09(금) 14시::버수다 극혐 맞춤법 월드컵 편 w.반타',
+  publishedAt: '2026-10-08 16:50:12',
+  boardName: '🛸:: 콘텐츠공지',
+  accessType: 'public',
+  contents: [
+    '루-하!',
+    '추석과 진드기 일본여행으로 인해 쉬어갔던 버수다가 다시 돌아왔습니다!!',
+    '버수다 3번째 주제는 바로바로 한글날 기념 극혐 맞춤법 월드컵-!',
+    '요번에는 습창단 갱갱수월래로 연이 닿아',
+    '오랫동안 서로의 육수로 남아있는 반타와 함께 합니다 !!!'
+  ].join('\n'),
+  imageUrl: 'https://stimg.sooplive.com/NORMAL_BBS/0/25795650/91871791445360702.png'
+}, '진드기', 'mingkymya');
+
+assert.equal(
+  jindeugiPersonalBersudaPost,
+  null,
+  'a member personal content post must not become crew news when the crew is mentioned only as past background context'
+);
+
+assert.equal(
+  batch._internals.detectActivity('습창단 갱갱수월래로 연이 닿아'),
+  '',
+  '창단 must not match as a substring inside an unrelated proper name'
+);
+
 console.log('editorial live regressions: ok');

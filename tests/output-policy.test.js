@@ -153,4 +153,30 @@ function apply(payload) {
   assert.equal(result.payload.selected.sheetImageUrl,'https://example.com/current.jpg');
 }
 
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'ZZAM지트',
+    selected:{
+      id:'209239633',
+      summary:'합방',
+      displaySummary:'합방',
+      displayDate:'10/8',
+      activityDate:'2026-10-08',
+      imageUrl:'',
+      sheetImageUrl:''
+    },
+    results:[{posts:[{
+      id:'209239633',
+      originalTitle:'📺2026.10.08 방송공지',
+      contents:'오늘은 저녁 8시 ZZAM지트에서 PEAK 합방 갑니다!! 숙봉, 루센, 나나, 에이레네 이렇게 4명이서 가요~'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'PEAK 합방');
+  assert.equal(out.selected.displaySummary,'PEAK 합방');
+  assert.equal(out.selected.displayText,'ZZAM지트 - PEAK 합방 (10/8) 📌');
+}
+
 console.log('output-policy regression tests passed');

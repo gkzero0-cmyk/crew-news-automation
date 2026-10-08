@@ -156,6 +156,7 @@ function detectActivity(raw = '') {
     [/모캡/i, '모캡 합방'],
     [/메이드\s*카페/i, '메이드카페'],
     [/점호/i, '점호'],
+    [/(?:peak[^.!?\n]{0,40}합방|합방[^.!?\n]{0,40}peak)/i, 'PEAK 합방'],
     [/합방/i, '합방'],
     [/세미\s*사주|세미사주/i, '세미사주'],
     [/모집/i, '모집'],
@@ -166,7 +167,7 @@ function detectActivity(raw = '') {
     [/합격/i, '합격'],
     [/가입/i, '가입'],
     [/탈퇴/i, '탈퇴'],
-    [/창단/i, '창단'],
+    [/(?:^|[^가-힣A-Za-z0-9])창단(?=$|[^가-힣A-Za-z0-9])/i, '창단'],
     [/회식/i, '회식'],
     [/여행|엠티|\bMT\b/i, '여행'],
     [/모임/i, '모임'],
@@ -469,6 +470,16 @@ function strictCrewPost(post, crew, station) {
   if (!override && /방셀|당첨자|당첨\s*안내|보상|경품|상품|배송|배달|전달\s*완료|수령|정산/i.test(sourceTitle)) return null;
 
   const activityText = sourceTitle + '\n' + body;
+  const escapedCrewForContext = String(crew);
+  const backgroundCrewMention = !titleCrew && !boardCrew && bodyCrew && new RegExp(
+    escapedCrewForContext + '[^.!?\\n]{0,60}(?:으로\\s*인해|때문에|덕분에|쉬어갔|다녀온\\s*(?:뒤|후)|지난\\s*(?:여행|행사|모임)|이후)',
+    'i'
+  ).test(body);
+  const currentCrewEventMention = new RegExp(
+    escapedCrewForContext + '[^.!?\\n]{0,60}(?:합방|점호|회의|모집|면접|영입|대회|대결|여행|모임|행사)[^.!?\\n]{0,40}(?:진행|예정|확정|합니다|해요|갑니다|가요|출전|참가|시작|오늘|내일|모레)',
+    'i'
+  ).test(body);
+  if (!override && !leader && backgroundCrewMention && !currentCrewEventMention) return null;
   const explicitlyUnconfirmedPlan = /확정(?:은|된\s*건)?\s*(?:아니|아님|전)|미정|수정될\s*수|고민\s*중|기획\s*중|논의\s*중|검토\s*중|하자고\s*(?:남기|말하)|할지\s*고민|생각\s*중/i.test(activityText);
   const laterExplicitConfirmation = /(?:최종\s*)?확정\s*(?:됐|되었|되었습니다|입니다|완료)|일정\s*확정|하기로\s*(?:확정|했|했습니다)/i.test(activityText);
   const questionOnlyPost = /질문|문의|궁금/i.test(sourceTitle) && !laterExplicitConfirmation;
