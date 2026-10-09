@@ -179,4 +179,30 @@ function apply(payload) {
   assert.equal(out.selected.displayText,'ZZAM지트 - PEAK 합방 (10/8) 📌');
 }
 
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'천타버스',
+    selected:{
+      id:'209347109',
+      summary:'대회',
+      displaySummary:'대회',
+      displayDate:'10/9',
+      activityDate:'2026-10-09',
+      imageUrl:'https://example.com/curling-winner.png',
+      sheetImageUrl:'https://example.com/curling-winner.png'
+    },
+    results:[{posts:[{
+      id:'209347109',
+      originalTitle:'릴파 컬링대회 "뎅꿀팀" 달타의 우승을 축하합니다!!!',
+      contents:'F1보면서도 할건 해야지 우리달타 ㅊㅊ'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'릴파 컬링대회 "뎅꿀팀" 달타 우승 축하');
+  assert.equal(out.selected.displaySummary,'릴파 컬링대회 "뎅꿀팀" 달타 우승 축하');
+  assert.equal(out.selected.displayText,'천타버스 - 릴파 컬링대회 "뎅꿀팀" 달타 우승 축하 (10/9) 📌');
+}
+
 console.log('output-policy regression tests passed');
