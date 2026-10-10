@@ -234,4 +234,106 @@ for (const [crew, current, expected] of [
   assert.equal(out.selected.displayText,expected);
 }
 
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'자라섬',
+    selected:{
+      id:'209431065',
+      summary:'콘텐츠',
+      displaySummary:'자라섬 VRC 콘텐츠',
+      displayDate:'10/10',
+      activityDate:'2026-10-10',
+      imageUrl:'https://example.com/jaraseom-vrc.png',
+      sheetImageUrl:'https://example.com/jaraseom-vrc.png'
+    },
+    results:[{posts:[{
+      id:'209431065',
+      originalTitle:'10/10 (토) 자펠다운: 부르(자라섬 임펠다운이라는뜻)',
+      title:'10/10 (토) 자펠다운: 부르(자라섬 임펠다운이라는뜻)',
+      contents:'10시 임대오신 부르님과 VRC 자라섬 컨텐츠합니다\n왜 왔는지부터 취조할께요'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'자펠다운: 부르 VRC 콘텐츠');
+  assert.equal(out.selected.displaySummary,'자펠다운: 부르 VRC 콘텐츠');
+  assert.equal(out.selected.displayText,'자라섬 - 자펠다운: 부르 VRC 콘텐츠 (10/10) 📌');
+}
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'테스트크루',
+    selected:{
+      id:'generic-content-without-name',
+      summary:'콘텐츠',
+      displaySummary:'콘텐츠',
+      displayDate:'10/11',
+      activityDate:'2026-10-11',
+      imageUrl:'',
+      sheetImageUrl:''
+    },
+    results:[{posts:[{
+      id:'generic-content-without-name',
+      originalTitle:'오늘 방송 공지',
+      contents:'오늘 테스트크루 콘텐츠 진행합니다'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'콘텐츠');
+  assert.equal(out.selected.displaySummary,'콘텐츠');
+  assert.equal(out.selected.displayText,'테스트크루 - 콘텐츠 (10/11) 📌');
+}
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'테스트크루',
+    selected:{
+      id:'named-collab-generic',
+      summary:'합방',
+      displaySummary:'합방',
+      displayDate:'10/11',
+      activityDate:'2026-10-11',
+      imageUrl:'',
+      sheetImageUrl:''
+    },
+    results:[{posts:[{
+      id:'named-collab-generic',
+      originalTitle:'오늘 합방 공지',
+      contents:'오늘 저녁 테스트크루에서 R.E.P.O 합방 갑니다'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'R.E.P.O 합방');
+  assert.equal(out.selected.displaySummary,'R.E.P.O 합방');
+  assert.equal(out.selected.displayText,'테스트크루 - R.E.P.O 합방 (10/11) 📌');
+}
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'테스트크루',
+    selected:{
+      id:'named-acronym-qualification',
+      summary:'합격',
+      displaySummary:'합격',
+      displayDate:'10/11',
+      activityDate:'2026-10-11',
+      imageUrl:'',
+      sheetImageUrl:''
+    },
+    results:[{posts:[{
+      id:'named-acronym-qualification',
+      originalTitle:'ABC 합격을 축하합니다',
+      contents:'테스트크루 멤버의 ABC 합격을 축하합니다'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'ABC 합격 축하');
+  assert.equal(out.selected.displaySummary,'ABC 합격 축하');
+  assert.equal(out.selected.displayText,'테스트크루 - ABC 합격 축하 (10/11) 📌');
+}
+
 console.log('output-policy regression tests passed');
