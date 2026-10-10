@@ -490,9 +490,13 @@ function strictCrewPost(post, crew, station) {
   if (!override && nonNewsMediaPost) return null;
 
   const externalApplication = /(?:콘텐츠|컨텐츠|대회|합방|팀)[^.!?\n]{0,80}(?:지원(?:합니다|했|해|서|중)?|참가\s*신청|신청(?:합니다|했|해|서|중)?|지원서)|(?:지원(?:합니다|했|해|서|중)?|참가\s*신청|신청(?:합니다|했|해|서|중)?|지원서)[^.!?\n]{0,80}(?:콘텐츠|컨텐츠|대회|합방|팀)/i.test(activityText);
+  const externalSelectionSupportPromotion =
+    /(?:콘텐츠|컨텐츠|대회|합방|팀)/i.test(activityText) &&
+    /(?:커트라인|지원(?:합니다|했|해|서|중)?|참가\s*신청|신청(?:합니다|했|해|서|중)?|지원서)/i.test(activityText) &&
+    /(?:추천|투표|좋아요|\bUP\b|업\s*(?:눌|부탁)|따봉)/i.test(activityText);
   const participationConfirmed = /(?:최종\s*)?(?:선발|선정|합격)\s*(?:됐|되었|되었습니다|완료|확정|했|했습니다)|(?:참가|참여|출전)\s*(?:확정|합니다|해요|하게\s*됐|하게\s*되었습니다)/i.test(activityText);
   const confirmationNegated = /(?:아직|미정|확정\s*[xX]|확정\s*아님|아닌|아니|여부|대기)[^.!?\n]{0,40}(?:선발|선정|합격|참가|참여|출전|확정)|(?:선발|선정|합격|참가|참여|출전|확정)[^.!?\n]{0,40}(?:아직|미정|[xX]|아님|아닌|아니|여부|대기)/i.test(activityText);
-  const unconfirmedExternalApplication = externalApplication && (!participationConfirmed || confirmationNegated);
+  const unconfirmedExternalApplication = (externalApplication || externalSelectionSupportPromotion) && (!participationConfirmed || confirmationNegated);
   if (!override && unconfirmedExternalApplication) return null;
 
   const personalAvatarCelebration = /(?:뉴|새|신규|new)?\s*(?:오리지널\s*)?(?:아바타|모델|의상|데뷔)|신의상|리뉴얼\s*(?:아바타|모델)/i.test(activityText) &&
