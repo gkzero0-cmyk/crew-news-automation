@@ -188,4 +188,50 @@ assert.equal(
   '창단 must not match as a substring inside an unrelated proper name'
 );
 
+
+const jangjiExternalSupportPost = batch._internals.strictCrewPost({
+  id:'209390327',
+  station:'iamquaddurup',
+  authorId:'iamquaddurup',
+  author:'장지수',
+  title:'세구님 콘텐츠',
+  originalTitle:'오늘',
+  publishedAt:'2026-10-10 09:56:13',
+  boardName:'🌎공지',
+  accessType:'public',
+  contents:[
+    '형님들 장지수용소 애들 요즘 열심히하는데',
+    '추천 한번씩만 부탁드리겠습니다',
+    '세구님 콘텐츠 커트라인 근처레용!!',
+    '시몽 https://www.sooplive.com/station/gosegu2/post/208975797#comment_noti122712541',
+    '후룽카카 https://www.sooplive.com/station/gosegu2/post/208975797#comment_noti122707011'
+  ].join('\n'),
+  imageUrl:'https://example.com/external-support.jpeg'
+}, '장지수용소', 'iamquaddurup');
+
+assert.equal(
+  jangjiExternalSupportPost,
+  null,
+  'external-content recommendation/support promotion before selection confirmation must not become representative crew news'
+);
+
+const confirmedExternalParticipation = batch._internals.strictCrewPost({
+  id:'confirmed-external-content',
+  station:'iamquaddurup',
+  authorId:'iamquaddurup',
+  author:'장지수',
+  title:'세구님 콘텐츠 최종 합격 확정',
+  originalTitle:'세구님 콘텐츠 최종 합격 확정',
+  publishedAt:'2026-10-10 12:00:00',
+  boardName:'🌎공지',
+  accessType:'public',
+  contents:'장지수용소 멤버가 세구님 콘텐츠에 최종 합격되었습니다. 참가 확정!',
+  imageUrl:'https://example.com/confirmed.jpeg'
+}, '장지수용소', 'iamquaddurup');
+
+assert.ok(
+  confirmedExternalParticipation,
+  'confirmed external-content participation must remain eligible crew news'
+);
+
 console.log('editorial live regressions: ok');
