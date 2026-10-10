@@ -205,4 +205,33 @@ function apply(payload) {
   assert.equal(out.selected.displayText,'천타버스 - 릴파 컬링대회 "뎅꿀팀" 달타 우승 축하 (10/9) 📌');
 }
 
+
+for (const [crew, current, expected] of [
+  ['진드기','진드기 합격','진드기 - SBO 합격 축하 (10/10) 📌'],
+  ['천타버스','천타버스 합격','천타버스 - SBO 합격 축하 (10/10) 📌']
+]) {
+  const payload={
+    ok:true,
+    strictCrew:crew,
+    selected:{
+      id:crew==='진드기'?'209450769':'209448537',
+      summary:'합격',
+      displaySummary:current,
+      displayDate:'10/10',
+      activityDate:'2026-10-10',
+      imageUrl:'https://example.com/sbo.png',
+      sheetImageUrl:'https://example.com/sbo.png'
+    },
+    results:[{posts:[{
+      id:crew==='진드기'?'209450769':'209448537',
+      originalTitle:crew==='진드기'?'진드기 SBO 합격 축하 드립니다.':'SBO 합격을 축하합니다',
+      contents:crew==='진드기'?'우승 두개자~ 오늘이는 그래도 탈락계 1등이야 고생했어 ^^':'ㅊㅊ'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'SBO 합격 축하');
+  assert.equal(out.selected.displaySummary,'SBO 합격 축하');
+  assert.equal(out.selected.displayText,expected);
+}
+
 console.log('output-policy regression tests passed');
