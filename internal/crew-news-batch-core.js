@@ -480,6 +480,24 @@ function strictCrewPost(post, crew, station) {
     'i'
   ).test(body);
   if (!override && !leader && backgroundCrewMention && !currentCrewEventMention) return null;
+
+  const originalCrewPlanRe = new RegExp(
+    '(?:원래|당초)[^.!?\\n]{0,30}' + escapedCrewForContext +
+    '[^.!?\\n]{0,100}(?:하려고|하려던|하기로)[^.!?\\n]{0,50}(?:건데|는데|지만|다가)',
+    'i'
+  );
+  const originalCrewPlanMatch = !titleCrew && !boardCrew ? originalCrewPlanRe.exec(body) : null;
+  let supersededCrewPlan = false;
+  if (originalCrewPlanMatch && originalCrewPlanMatch.index > 0) {
+    const beforePlan = body.slice(0, originalCrewPlanMatch.index);
+    const priorActivityMatches = [...beforePlan.matchAll(/([가-힣A-Za-z0-9_]{2,24})\s*(합방|콘텐츠|컨텐츠|대회|대결|모임|행사)/gi)];
+    supersededCrewPlan = priorActivityMatches.some(match => {
+      const activityOwner = normalize(match[1] || '');
+      return activityOwner && !activityOwner.includes(crewToken) && !crewToken.includes(activityOwner);
+    });
+  }
+  if (!override && supersededCrewPlan) return null;
+
   const explicitlyUnconfirmedPlan = /확정(?:은|된\s*건)?\s*(?:아니|아님|전)|미정|수정될\s*수|고민\s*중|기획\s*중|논의\s*중|검토\s*중|하자고\s*(?:남기|말하)|할지\s*고민|생각\s*중/i.test(activityText);
   const laterExplicitConfirmation = /(?:최종\s*)?확정\s*(?:됐|되었|되었습니다|입니다|완료)|일정\s*확정|하기로\s*(?:확정|했|했습니다)/i.test(activityText);
   const questionOnlyPost = /질문|문의|궁금/i.test(sourceTitle) && !laterExplicitConfirmation;
