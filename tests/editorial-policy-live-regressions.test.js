@@ -234,4 +234,49 @@ assert.ok(
   'confirmed external-content participation must remain eligible crew news'
 );
 
+
+const kangClanSupersededPlanPost = batch._internals.strictCrewPost({
+  id:'209203007',
+  station:'rkdakstlr911',
+  authorId:'rkdakstlr911',
+  author:'강만식',
+  title:'10 08 공지',
+  originalTitle:'10 08 공지',
+  publishedAt:'2026-10-08 04:07:14',
+  boardName:'공지사항',
+  accessType:'public',
+  contents:[
+    '형님들 오늘 총겜동 합방 재미있게 보셨나요ㅎㅎ',
+    '원래 강씨세가 애들이랑 온리업 대결로 5분씩 하려고 했던건데 오프라인에서 다 같이하니까',
+    '생각보다 쫄깃했네용',
+    '집 가는 길 입니다!!'
+  ].join('\n'),
+  imageUrl:''
+}, '강씨세가', 'rkdakstlr911');
+
+assert.equal(
+  kangClanSupersededPlanPost,
+  null,
+  'a crew plan mentioned only as the original plan for a different activity that actually happened must not become crew news'
+);
+
+const genuineCrewCollabPost = batch._internals.strictCrewPost({
+  id:'genuine-crew-collab',
+  station:'rkdakstlr911',
+  authorId:'rkdakstlr911',
+  author:'강만식',
+  title:'강씨세가 합방 공지',
+  originalTitle:'강씨세가 합방 공지',
+  publishedAt:'2026-10-11 20:00:00',
+  boardName:'공지사항',
+  accessType:'public',
+  contents:'오늘 강씨세가 애들이랑 온리업 대결 합방 진행합니다. 원래 어제 하려고 했던 건데 오늘 하기로 확정했습니다.',
+  imageUrl:''
+}, '강씨세가', 'rkdakstlr911');
+
+assert.ok(
+  genuineCrewCollabPost,
+  'a real crew activity must remain eligible even when the post mentions an earlier plan'
+);
+
 console.log('editorial live regressions: ok');
