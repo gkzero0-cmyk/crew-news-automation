@@ -336,4 +336,30 @@ for (const [crew, current, expected] of [
   assert.equal(out.selected.displayText,'테스트크루 - ABC 합격 축하 (10/11) 📌');
 }
 
+
+{
+  const payload={
+    ok:true,
+    strictCrew:'자라섬',
+    selected:{
+      id:'209518583',
+      summary:'합방',
+      displaySummary:'합방',
+      displayDate:'10/11',
+      activityDate:'2026-10-11',
+      imageUrl:'',
+      sheetImageUrl:''
+    },
+    results:[{posts:[{
+      id:'209518583',
+      originalTitle:'오누레 공쥬ㅣ',
+      contents:'오늘은 자라섬 합방을 키보드로 해야될 것 같습니댱. 10시에 콘텐츠 할개욤'
+    }]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'크루 합방');
+  assert.equal(out.selected.displaySummary,'크루 합방');
+  assert.equal(out.selected.displayText,'자라섬 - 크루 합방 (10/11) 📌');
+}
+
 console.log('output-policy regression tests passed');
