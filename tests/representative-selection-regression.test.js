@@ -121,4 +121,10 @@ assert.strictEqual(
   'a selected post that directly links another SOOP post must trigger representative-source enrichment'
 );
 
+// Prefer informative scheduled meeting posts over newer generic posts for the same event/day.
+const specificMeeting={representativeTier:2,isCrewLeader:false,strictActivity:'정기회의',activityDate:'2026-10-12',sourcePublishedAt:'2026-10-12 14:28:06'};
+const genericMeeting={representativeTier:2,isCrewLeader:false,strictActivity:'회의',activityDate:'2026-10-12',sourcePublishedAt:'2026-10-12 18:54:53'};
+assert(compareRepresentativeCandidates(specificMeeting,genericMeeting)<0,'정기회의 should outrank generic same-day meeting');
+assert(compareRepresentativeCandidates(genericMeeting,specificMeeting)>0,'newer generic meeting must not replace 정기회의');
+
 console.log('representative-selection regression: ok');

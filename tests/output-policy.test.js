@@ -362,4 +362,29 @@ for (const [crew, current, expected] of [
   assert.equal(out.selected.displayText,'자라섬 - 크루 합방 (10/11) 📌');
 }
 
+// Exact-post winner confirmation: do not describe an entrant as an organizer.
+{
+  const p={ok:true,strictCrew:'천타버스',selected:{id:'209626205',summary:'대회',displaySummary:'모카의 버추얼 J-POP 푹먹노래대회',activityDate:'2026-10-12',imageUrl:'https://example.com/poster.png',sheetImageUrl:'https://example.com/poster.png',imageSource:'post_self'},results:[{posts:[{id:'209626205',originalTitle:'모카의 버추얼 J-POP 푹먹노래대회',contents:'대회 포스터'}]}]};
+  const out=apply(p);
+  assert.equal(out.selected.displayText,'천타버스 - 모카 J-POP 노래대회 우승 (10/12) 📌');
+  assert.equal(out.selected.imageUrl,'');
+  assert.equal(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
+  assert.match(out.selected.imageSelectionReason,/우승/);
+}
+// Entering or hoping to win a different event is not a verified victory.
+{
+  const p={ok:true,strictCrew:'천타버스',selected:{id:'209616935',summary:'대회',displaySummary:'J-POP 노래대회',activityDate:'2026-10-12',imageUrl:'',sheetImageUrl:''},results:[{posts:[{id:'209616935',originalTitle:'J-POP 대회 참가',contents:'우승하면 좋겠다'}]}]};
+  const out=apply(p);
+  assert.doesNotMatch(out.selected.displayText,/우승/);
+}
+// A member's solo avatar VOD is not verified group-meeting imagery.
+{
+  const p={ok:true,strictCrew:'머리퍼리',selected:{id:'209617403',summary:'회의',displaySummary:'머리퍼리 회의',activityDate:'2026-10-12',imageUrl:'https://example.com/solo-avatar.jpg',sheetImageUrl:'https://example.com/solo-avatar.jpg',imageSource:'member_vod'},results:[{posts:[{id:'209617403',originalTitle:'머리퍼리 회의',contents:'크루 회의 합니다'}]}]};
+  const out=apply(p);
+  assert.equal(out.selected.imageUrl,'');
+  assert.equal(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
+  assert.match(out.selected.imageSelectionReason,/단체 회의/);
+  const verified=apply({...p,selected:{...p.selected,imageVerifiedGroup:true}});
+  assert.equal(verified.selected.imageUrl,'https://example.com/solo-avatar.jpg');
+}
 console.log('output-policy regression tests passed');

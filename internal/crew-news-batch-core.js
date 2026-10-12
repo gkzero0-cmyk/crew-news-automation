@@ -240,6 +240,7 @@ function sameRepresentativeActivity(a, b) {
   const aFamily = activityFamily(aRawActivity);
   const bFamily = activityFamily(bRawActivity);
   if (aFamily && aFamily === bFamily && aFamily === 'contest') return true;
+  if (aFamily && aFamily === bFamily && aFamily === 'meeting') return true;
 
   const genericPair = new Set([aActivity, bActivity]);
   if (genericPair.size === 2 && genericPair.has('콘텐츠') && genericPair.has('합방')) return true;
@@ -270,6 +271,12 @@ function compareRepresentativeCandidates(a, b) {
   const tier = Number(a.representativeTier || 9) - Number(b.representativeTier || 9);
   if (tier) return tier;
 
+  // On the same date, a named regular meeting beats a newer generic notice.
+  if (activityFamily(a.strictActivity||a.displaySummary||'')==='meeting') {
+    const rank=p=>/정기\s*회의/.test([p.strictActivity,p.displaySummary,p.originalTitle].join(' '))?2:1;
+    const delta=rank(b)-rank(a);
+    if (delta) return delta;
+  }
   const mediaPriority =
     Number(b.representativeMediaPriority || 0) -
     Number(a.representativeMediaPriority || 0);
@@ -1259,7 +1266,7 @@ module.exports = async function handler(req, res) {
 
     // 대표 소식 선정은 VOD 조회와 분리한다. VOD/썸네일 보조 조회 실패가
     // 이미 검증된 대표 소식 전체를 500으로 만들지 않도록 한다.
-    if (selected && !selected.imageUrl) {
+    if (selected && !selected.imageUrl && !/회의/.test(String(selected.strictActivity||selected.displaySummary||''))) {
       const orderedStations = [
         ...new Set([
           selected._station,
