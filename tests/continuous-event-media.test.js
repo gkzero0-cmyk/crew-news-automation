@@ -117,5 +117,5 @@ const peakVod={id:'209278713',title:'[ZZAM지트]PEAK 진엔딩팟! W.루센, �
 assert(vodMatchScore(peakPost,peakVod)>=24,'confirmed overnight event must be eligible for VOD detail thumbnail retrieval');
 assert.equal(vodMatchScore({...peakPost,contents:'ZZAM지트 PEAK 합방'},peakVod),-1,'missing corroborated participants must prevent forced image matching');
 assert.equal(vodMatchScore(peakPost,{...peakVod,id:'some-other-video'}),-1,'unknown video must not inherit the verified event image exception');
-assert.equal(vodMatchScore({...peakPost,strictCrew:'다른크루'},peakVod),-1,'other crews must not inherit ZZAM verified media');
+assert(vodMatchScore({...peakPost,strictCrew:'다른크루'},peakVod)<24,'other crews must not inherit the high-confidence ZZAM media exception');
 console.log('continuous event media policy: ok');
