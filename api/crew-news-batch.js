@@ -5,6 +5,7 @@ const crewNewsHandler = require('../internal/crew-news.js');
 const enrichment = require('../lib/event-enrichment.js');
 const outputPolicy = require('../lib/output-policy.js');
 const vodPolicy = require('../lib/editorial-vod-policy.js');
+const vodConsensusPolicy = require('../lib/vod-consensus-policy.js');
 const {POLICY_VERSION}=require('../lib/version.js');
 
 const LEADER_BY_CREW = Object.freeze({
@@ -19,6 +20,12 @@ const LEADER_BY_CREW = Object.freeze({
 });
 
 const BLANK_SHEET_IMAGE_URL='https://crew-news-automation.vercel.app/api/blank-image';
+const VOD_CONSENSUS_MAX_STATIONS=4;
+const VOD_CONSENSUS_MAX_EVENT_AGE_DAYS=3;
+const VOD_CONSENSUS_LIST_CACHE_TTL_MS=60*60*1000;
+const VOD_CONSENSUS_DETAIL_CACHE_TTL_MS=6*60*60*1000;
+const vodConsensusListCache=new Map();
+const vodConsensusDetailCache=new Map();
 
 function safeStations(raw='') {
   return [...new Set(String(raw||'').split(',').map(v=>v.trim()).filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))].slice(0,20);
@@ -49,49 +56,7 @@ async function invoke(handler, req, url) {
 
 function copyHeaders(res, headers={}) {
   for (const [name,value] of Object.entries(headers||{})) {
-    try { res.setHeader(name,value); } catch (_) {}
-  }
-}
-
-function isoDaysAgo(days) {
-  const d=new Date(Date.now()-days*24*60*60*1000);
-  return d.toISOString().slice(0,10);
-}
-
-function displayDate(iso='') {
-  const m=String(iso).match(/^\d{4}-(\d{2})-(\d{2})$/);
-  return m ? `${Number(m[1])}/${Number(m[2])}` : '';
-}
-
-function sameEvent(coreSelected,event,sourcePost=null) {
-  if (!coreSelected || !event) return false;
-
-  const eventId=String(event.id||'').trim();
-  if (/^[0-9]+$/.test(eventId) && sourcePost) {
-    const sourceText=[sourcePost.originalTitle,sourcePost.title,sourcePost.contents,sourcePost.postUrl]
-      .filter(Boolean).join('\n');
-    if (sourceText.includes('/post/'+eventId)) return true;
-  }
-
-  const coreText=String(coreSelected.displaySummary||coreSelected.summary||'');
-  const coreNorm=enrichment.normalize(coreText);
-  const eventActivityNorm=enrichment.normalize(event.activity||'');
-  const eventDisplayNorm=enrichment.normalize(event.displaySummary||'');
-  const coreSummaryNorm=enrichment.normalize(coreSelected.summary||'');
-  const activityMatches=Boolean(
-    coreNorm && eventActivityNorm && (
-      coreNorm.includes(eventActivityNorm) ||
-      eventActivityNorm.includes(coreNorm) ||
-      (eventDisplayNorm && coreSummaryNorm && eventDisplayNorm.includes(coreSummaryNorm))
-    )
-  );
-  if (!activityMatches) return false;
-
-  const coreDate=String(coreSelected.activityDate||'').slice(0,10);
-  const eventDate=String(event.activityDate||'').slice(0,10);
-  return Boolean(coreDate && eventDate && coreDate===eventDate);
-}
-
+    try { res.setHeader(name,v...[truncated]
 function selectedPostFromPayload(payload) {
   if (!payload || !payload.selected) return null;
   const id=String(payload.selected.id||'');
@@ -136,62 +101,7 @@ function isIndividualExternalPromotionSelected(payload) {
   if (!payload || !payload.selected) return false;
   const post=selectedPostFromPayload(payload);
   if (!post) return false;
-  const crew=String(payload.strictCrew||'');
-  const station=String(payload.selected.station||post.station||post.authorId||'').trim();
-  return isIndividualExternalPromotionPost(post,crew,station);
-}
-
-function selectLatestEligibleCandidate(rawPosts, crew) {
-  if (!crew) return null;
-  const candidates=[];
-  for (const rawPost of Array.isArray(rawPosts)?rawPosts:[]) {
-    if (!rawPost) continue;
-    const station=String(rawPost.station||rawPost.authorId||'').trim();
-    if (isIndividualExternalPromotionPost(rawPost,crew,station)) continue;
-    const candidate=core._internals.strictCrewPost(rawPost,crew,station);
-    if (!candidate) continue;
-    candidates.push({...candidate,station:station||candidate.station||candidate.authorId||''});
-  }
-  const contextual=core._internals.applyContinuousEventContext(candidates);
-  contextual.sort(core._internals.compareRepresentativeCandidates);
-  const selected=contextual[0]||null;
-  if (!selected) return null;
-
-  const originalPostImageUrl=selected.imageUrl||'';
-  const originalPostSheetImageUrl=selected.sheetImageUrl||'';
-  const chosenPostImage=core._internals.choosePostImageCandidate(selected,contextual);
-  return {
-    ...selected,
-    originalPostImageUrl,
-    originalPostSheetImageUrl,
-    imageUrl:chosenPostImage?chosenPostImage.imageUrl:'',
-    sheetImageUrl:chosenPostImage?chosenPostImage.sheetImageUrl:'',
-    imageSource:chosenPostImage?chosenPostImage.imageSource:'none',
-    imagePostId:chosenPostImage?chosenPostImage.imagePostId:'',
-    imageSuitabilityScore:chosenPostImage?chosenPostImage.imageSuitabilityScore:null,
-    imageRejected:Boolean(originalPostImageUrl&&!chosenPostImage)
-  };
-}
-
-function hasLinkedRepresentativeSourceSelected(payload) {
-  if (!payload || !payload.selected) return false;
-  const post=selectedPostFromPayload(payload);
-  if (!post) return false;
-  const selectedId=String(payload.selected.id||'').trim();
-  const text=[post.originalTitle,post.title,post.contents,post.postUrl].filter(Boolean).join('\n');
-  const matches=[...text.matchAll(/https?:\/\/(?:www\.)?sooplive\.com\/station\/[^\s/]+\/post\/(\d+)/gi)];
-  return matches.some(match=>String(match[1]||'') && String(match[1])!==selectedId);
-}
-
-function shouldAttemptEnrichment(payload) {
-  if (!payload || payload.ok!==true || !payload.strictCrew) return false;
-  if (isExternalParticipationRecapSelected(payload)) return true;
-  if (hasLinkedRepresentativeSourceSelected(payload)) return true;
-  if (!enrichment.needsEnrichment(payload.selected)) return false;
-  if (payload.preservePrevious===true && payload.healthStatus!=='suspicious_empty') return false;
-  return true;
-}
-
+  const crew=...[truncated]
 async function collectRawPosts(req, stations, crew, forceRefresh) {
   const all=[];
   const targets=[...new Set([...stations,...(enrichment.AUXILIARY_VALIDATORS[crew]||[])])];
@@ -238,19 +148,71 @@ async function collectLeaderVods(req, leaderStation, activityDate) {
       .filter(v=>String(v.publishedAt||'').slice(0,10)===activityDate)
       .slice(0,3);
     const detailed=[];
-    for (const vod of candidates) {
-      try {
-        const detail=await invoke(crewNewsHandler,req,`/api/crew-news?station=${encodeURIComponent(leaderStation)}&mode=vod-detail&title_no=${encodeURIComponent(vod.id)}`);
-        const d=detail.body&&detail.body.vod;
-        detailed.push({...vod,...(d||{}),publishedAt:vod.publishedAt,station:leaderStation,vodUrl:vod.vodUrl||`https://vod.sooplive.com/player/${vod.id}`});
-      } catch (_) {
-        detailed.push({...vod,station:leaderStation});
-      }
-    }
-    return detailed;
-  } catch (_) {
-    return [];
+    for (con...[truncated]  map.set(key,{at:Date.now(),value});
+  if (map.size>maxSize) {
+    const oldest=[...map.entries()].sort((a,b)=>a[1].at-b[1].at)[0];
+    if (oldest) map.delete(oldest[0]);
   }
+}
+
+async function fetchVodListForConsensus(req,station) {
+  const key=String(station||'');
+  const cached=cacheRead(vodConsensusListCache,key,VOD_CONSENSUS_LIST_CACHE_TTL_MS);
+  if (cached) return {vods:cached,cacheHit:true};
+  try {
+    const path='/api/crew-news?station='+encodeURIComponent(key)+'&mode=vods&per_page=30';
+    const result=await invoke(crewNewsHandler,req,path);
+    const vods=result.statusCode>=200 && result.statusCode<300 && result.body && result.body.ok===true
+      ? (result.body.vods||[])
+      : [];
+    cacheWrite(vodConsensusListCache,key,vods);
+    return {vods,cacheHit:false};
+  } catch (_) {
+    return {vods:[],cacheHit:false};
+  }
+}
+
+async function fetchVodDetailForConsensus(req,station,id) {
+  const key=String(station||'')+':'+String(id||'');
+  const cached=cacheRead(vodConsensusDetailCache,key,VOD_CONSENSUS_DETAIL_CACHE_TTL_MS);
+  if (cached) return {vod:cached,cacheHit:true};
+  try {
+    const path='/api/crew-news?station='+encodeURIComponent(station)+'&mode=vod-detail&title_no='+encodeURIComponent(id);
+    const result=await invoke(crewNewsHandler,req,path);
+    const vod=result.statusCode>=200 && result.statusCode<300 && result.body && result.body.ok===true
+      ? (result.body.vod||null)
+      : null;
+    if (vod) cacheWrite(vodConsensusDetailCache,key,vod);
+    return {vod,cacheHit:false};
+  } catch (_) {
+    return {vod:null,cacheHit:false};
+  }
+}
+
+async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date()) {
+  if (!shouldAttemptVodConsensus(payload,now)) return payload;
+  const crew=String(payload.strictCrew||'');
+  const selected=payload.selected||{};
+  const stations=consensusStationOrder(payload,requestUrl);
+  if (stations.length<2) return payload;
+
+  const vodsByStation=new Map();
+  let consensus=null;
+  let networkListRequests=0;
+ ...[truncated]      nextSelected.sheetImageUrl=detail.sheetImageUrl||detail.imageUrl;
+      nextSelected.imageSource='member_vod_consensus';
+      nextSelected.imageSelectionReason='멀티멤버 VOD 공통 활동명 일치';
+      nextSelected.fallbackVodUrl=vod.vodUrl||('https://vod.sooplive.com/player/'+vod.id);
+      break;
+    }
+  }
+  nextSelected.vodConsensusDetailRequests=networkDetailRequests;
+
+  return outputPolicy.refreshFingerprintState(
+    {...payload,selected:nextSelected},
+    core._internals.stableFingerprint,
+    true
+  );
 }
 
 async function attachEditorialVodFallback(req,payload) {
@@ -282,62 +244,7 @@ async function attachEditorialVodFallback(req,payload) {
     return outputPolicy.refreshFingerprintState(
       {...payload,selected},
       core._internals.stableFingerprint,
-      true
-    );
-  } catch (_) {
-    return payload;
-  }
-}
-
-function toCoreFingerprintInput(crew,event) {
-  return {
-    id:event.id,
-    strictCrew:crew,
-    strictActivity:event.activity,
-    displaySummary:event.displaySummary,
-    activityDate:event.activityDate,
-    publishedAt:event.publishedAt,
-    sourcePublishedAt:event.sourcePublishedAt,
-    imageUrl:event.imageUrl||'',
-    imageSource:event.imageSource||'none'
-  };
-}
-
-function buildSelected(crew,event,fingerprint) {
-  const date=displayDate(event.activityDate);
-  return {
-    id:event.id,
-    station:event.station,
-    author:event.author||'',
-    postUrl:event.postUrl,
-    summary:event.activity,
-    displaySummary:event.displaySummary,
-    extractionQuality:event.extractionQuality ?? 8,
-    extractionComplete:event.extractionComplete !== false,
-    displayDate:date,
-    displayText:`${crew} - ${event.displaySummary}${date?` (${date})`:''} 📌`,
-    publishedAt:event.publishedAt,
-    sourcePublishedAt:event.sourcePublishedAt||event.publishedAt,
-    activityDate:event.activityDate,
-    activityDateSource:event.activityDateSource||'event-cluster',
-    publicVerification:'event_cluster',
-    imageUrl:event.imageUrl||'',
-    sheetImageUrl:event.sheetImageUrl || (event.imageUrl ? '' : BLANK_SHEET_IMAGE_URL),
-    imageSource:event.imageSource||'none',
-    imageSelectionReason:event.imageSelectionReason||((event.imageUrl||'')?'대표 게시글 이미지':'적합 이미지 없음'),
-    imagePostId:event.imagePostId||'',
-    imageSuitabilityScore:event.imageSuitabilityScore ?? null,
-    imageRejected:false,
-    selectionReason:event.selectionReason||'',
-    evidenceCount:Number(event.evidenceCount||0),
-    evidenceStations:Array.isArray(event.evidenceStations)?event.evidenceStations:[],
-    evidenceAuthors:Array.isArray(event.evidenceAuthors)?event.evidenceAuthors:[],
-    fallbackVodUrl:event.fallbackVodUrl||'',
-    fingerprint,
-    representativeTier:event.representativeTier||2,
-    isCrewLeader:Boolean(event.isCrewLeader)
-  };
-}
+      tru...[truncated]}
 
 function clearInvalidSelection(payload) {
   return {
@@ -388,58 +295,11 @@ async function enrichPayload(req, payload, requestUrl) {
     enrichedEvent=enrichment.attachBestImage(enrichedEvent,[],leaderVods,leaderStation);
   }
 
-  const fingerprint=core._internals.stableFingerprint(toCoreFingerprintInput(crew,enrichedEvent));
-  const previousFingerprint=String(payload.previousFingerprint||'');
-  const unchanged=Boolean(fingerprint&&previousFingerprint&&fingerprint===previousFingerprint);
-
-  return {
-    ...payload,
-    policyVersion:POLICY_VERSION,
-    healthStatus:'healthy',
-    preservePrevious:false,
-    suspiciousEmpty:false,
-    selectedFingerprint:fingerprint,
-    unchanged,
-    shouldWrite:!unchanged,
-    updateAction:unchanged?'skip_unchanged':'write',
-    selected:buildSelected(crew,enrichedEvent,fingerprint),
-    eventClusterVersion:'event-cluster-v1'
-  };
-}
-
-module.exports=async function handler(req,res) {
-  const captured=captureRes();
-  await core(req,captured);
-  copyHeaders(res,captured.state.headers);
-  if (captured.state.statusCode<200 || captured.state.statusCode>=300 || !captured.state.body) {
-    return res.status(captured.state.statusCode).json(captured.state.body);
-  }
-  let body=captured.state.body;
-  try {
-    const requestUrl=new URL(req.url||'/','https://crew-news.local');
-    if (isIndividualExternalPromotionSelected(body)) {
-      body=await recoverPreviousEligibleSelection(req,body,requestUrl);
-    } else {
-      body=await enrichPayload(req,body,requestUrl);
-    }
-    body=outputPolicy.applyOutputPolicy(body,{
-      blankUrl:BLANK_SHEET_IMAGE_URL,
-      stableFingerprint:core._internals.stableFingerprint
-    });
-    body=await attachEditorialVodFallback(req,body);
-  } catch (_) {
-    body=captured.state.body;
-  }
-  res.setHeader('X-Crew-News-Policy',POLICY_VERSION);
-  res.setHeader('X-Crew-News-Enrichment','event-cluster-v1');
-  return res.status(captured.state.statusCode).json(body);
-};
-
-module.exports._internals={
-  ...core._internals,
+  const fingerprint=core._internals....[truncated]  ...core._internals,
   ...enrichment,
   ...outputPolicy,
   ...vodPolicy,
+  ...vodConsensusPolicy,
   safeStations,
   captureRes,
   sameEvent,
@@ -454,6 +314,13 @@ module.exports._internals={
   buildSelected,
   clearInvalidSelection,
   enrichPayload,
+  consensusStationOrder,
+  shouldAttemptVodConsensus,
+  fetchVodListForConsensus,
+  fetchVodDetailForConsensus,
+  attachVodConsensusFallback,
   attachEditorialVodFallback,
+  VOD_CONSENSUS_MAX_STATIONS,
+  VOD_CONSENSUS_MAX_EVENT_AGE_DAYS,
   BLANK_SHEET_IMAGE_URL
 };
