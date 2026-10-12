@@ -21,6 +21,8 @@ const LEADER_BY_CREW = Object.freeze({
 
 const BLANK_SHEET_IMAGE_URL='https://crew-news-automation.vercel.app/api/blank-image';
 const VOD_CONSENSUS_MAX_STATIONS=4;
+const VOD_CONSENSUS_IMAGE_MAX_STATIONS=8;
+const VOD_CONSENSUS_IMAGE_MAX_DETAILS=4;
 const VOD_CONSENSUS_MAX_EVENT_AGE_DAYS=3;
 const VOD_CONSENSUS_LIST_CACHE_TTL_MS=60*60*1000;
 const VOD_CONSENSUS_DETAIL_CACHE_TTL_MS=6*60*60*1000;
@@ -260,7 +262,7 @@ async function collectLeaderVods(req, leaderStation, activityDate) {
   }
 }
 
-function consensusStationOrder(payload, requestUrl) {
+function consensusAllStationOrder(payload, requestUrl) {
   const crew=String(payload&&payload.strictCrew||'');
   const selected=payload&&payload.selected||{};
   const requested=requestUrl instanceof URL
@@ -272,7 +274,15 @@ function consensusStationOrder(payload, requestUrl) {
     String(LEADER_BY_CREW[crew]||'').trim(),
     ...evidence.map(v=>String(v||'').trim()),
     ...requested
-  ].filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))].slice(0,VOD_CONSENSUS_MAX_STATIONS);
+  ].filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))];
+}
+
+function consensusStationOrder(payload, requestUrl) {
+  return consensusAllStationOrder(payload,requestUrl).slice(0,VOD_CONSENSUS_MAX_STATIONS);
+}
+
+function consensusImageStationOrder(payload, requestUrl) {
+  return consensusAllStationOrder(payload,requestUrl).slice(0,VOD_CONSENSUS_IMAGE_MAX_STATIONS);
 }
 
 function shouldAttemptVodConsensus(payload, now=new Date()) {
@@ -381,31 +391,59 @@ async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date())
   };
 
   let networkDetailRequests=0;
+  let networkImageListRequests=0;
+  const imageCheckedStations=[...checkedStations];
   if (!String(nextSelected.imageUrl||'').trim()) {
-    const preferred=vodConsensusPolicy.pickRepresentativeVod(consensus,{preferredStation:selected.station});
-    const ordered=[];
-    const seen=new Set();
-    for (const vod of [preferred,...consensus.supporters.map(row=>row.vod)]) {
-      const id=String(vod&&vod.id||'');
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      ordered.push(vod);
+    const allImageStations=consensusImageStationOrder(payload,requestUrl);
+    const alreadyChecked=new Set(checkedStations);
+    for (const station of allImageStations) {
+      if (alreadyChecked.has(station)) continue;
+      const fetched=await fetchVodListForConsensus(req,station);
+      if (!fetched.cacheHit) networkImageListRequests+=1;
+      imageCheckedStations.push(station);
+      alreadyChecked.add(station);
+      vodsByStation.set(station,fetched.vods||[]);
     }
 
-    for (const vod of ordered.slice(0,2)) {
+    const ordered=vodConsensusPolicy.collectCompatibleVodCandidates({
+      crew,
+      activityDate:selected.activityDate,
+      consensus,
+      vodsByStation,
+      preferredStation:selected.station
+    });
+
+    let fallback=null;
+    let chosen=null;
+    for (const vod of ordered.slice(0,VOD_CONSENSUS_IMAGE_MAX_DETAILS)) {
       const fetched=await fetchVodDetailForConsensus(req,vod.station||'',vod.id);
       if (!fetched.cacheHit) networkDetailRequests+=1;
       const detail=fetched.vod;
       if (!detail || !detail.imageUrl) continue;
-      nextSelected.imageUrl=detail.imageUrl;
-      nextSelected.sheetImageUrl=detail.sheetImageUrl||detail.imageUrl;
+      const row={vod,detail};
+      if (!fallback) fallback=row;
+      if (vodConsensusPolicy.isRepresentativeThumbnailUrl(detail.imageUrl)) {
+        chosen=row;
+        break;
+      }
+    }
+    if (!chosen) chosen=fallback;
+
+    if (chosen) {
+      nextSelected.imageUrl=chosen.detail.imageUrl;
+      nextSelected.sheetImageUrl=chosen.detail.sheetImageUrl||chosen.detail.imageUrl;
       nextSelected.imageSource='member_vod_consensus';
-      nextSelected.imageSelectionReason='멀티멤버 VOD 공통 활동명 일치';
-      nextSelected.fallbackVodUrl=vod.vodUrl||('https://vod.sooplive.com/player/'+vod.id);
-      break;
+      nextSelected.imageSelectionReason=vodConsensusPolicy.isRepresentativeThumbnailUrl(chosen.detail.imageUrl)
+        ? '멀티멤버 VOD 대표 썸네일 우선'
+        : '멀티멤버 VOD 공통 활동명 일치';
+      nextSelected.fallbackVodUrl=chosen.vod.vodUrl||('https://vod.sooplive.com/player/'+chosen.vod.id);
+      nextSelected.vodConsensusImageVodId=chosen.vod.id;
+      nextSelected.vodConsensusImageStation=chosen.vod.station;
     }
   }
   nextSelected.vodConsensusDetailRequests=networkDetailRequests;
+  nextSelected.vodConsensusImageListRequests=networkImageListRequests;
+  nextSelected.vodConsensusImageCheckedStations=imageCheckedStations;
 
   return outputPolicy.refreshFingerprintState(
     {...payload,selected:nextSelected},
@@ -616,13 +654,17 @@ module.exports._internals={
   buildSelected,
   clearInvalidSelection,
   enrichPayload,
+  consensusAllStationOrder,
   consensusStationOrder,
+  consensusImageStationOrder,
   shouldAttemptVodConsensus,
   fetchVodListForConsensus,
   fetchVodDetailForConsensus,
   attachVodConsensusFallback,
   attachEditorialVodFallback,
   VOD_CONSENSUS_MAX_STATIONS,
+  VOD_CONSENSUS_IMAGE_MAX_STATIONS,
+  VOD_CONSENSUS_IMAGE_MAX_DETAILS,
   VOD_CONSENSUS_MAX_EVENT_AGE_DAYS,
   BLANK_SHEET_IMAGE_URL
 };
