@@ -371,6 +371,19 @@ for (const [crew, current, expected] of [
   assert.equal(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
   assert.match(out.selected.imageSelectionReason,/우승/);
 }
+// The actual official winner congratulation post includes its own image.
+{
+  const url='https://stimg.sooplive.com/NORMAL_BBS/3/12240993/67921791804764247.png';
+  const p={ok:true,strictCrew:'천타버스',selected:{id:'209626205',summary:'대회',displaySummary:'모카의 버추얼 J-POP 푹먹노래대회',activityDate:'2026-10-12',imageUrl:url,sheetImageUrl:url,imageSource:'post_self'},results:[{posts:[{id:'209626205',originalTitle:'모카의 버추얼 J-POP 푹먹노래대회 우승을 축하합니다!',imageUrl:url,contents:''}]}]};
+  const out=apply(p);
+  assert.equal(out.selected.displayText,'천타버스 - 모카 J-POP 노래대회 우승 (10/12) 📌');
+  assert.equal(out.selected.imageUrl,url,'actual official congratulation image must not be cleared');
+  assert.equal(out.selected.sheetImageUrl,url);
+  const mismatched=apply({...p,selected:{...p.selected,imageUrl:'https://example.com/different.jpg',sheetImageUrl:'https://example.com/different.jpg'}});
+  assert.equal(mismatched.selected.imageUrl,'','image sourced from a different post remains unverified');
+  const vod=apply({...p,selected:{...p.selected,imageSource:'member_vod'}});
+  assert.equal(vod.selected.imageUrl,'','a generic VOD thumbnail is not a verified congratulation image');
+}
 // Entering or hoping to win a different event is not a verified victory.
 {
   const p={ok:true,strictCrew:'천타버스',selected:{id:'209616935',summary:'대회',displaySummary:'J-POP 노래대회',activityDate:'2026-10-12',imageUrl:'',sheetImageUrl:''},results:[{posts:[{id:'209616935',originalTitle:'J-POP 대회 참가',contents:'우승하면 좋겠다'}]}]};
