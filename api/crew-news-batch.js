@@ -5,6 +5,7 @@ const crewNewsHandler = require('../internal/crew-news.js');
 const enrichment = require('../lib/event-enrichment.js');
 const outputPolicy = require('../lib/output-policy.js');
 const vodPolicy = require('../lib/editorial-vod-policy.js');
+const vodConsensusPolicy = require('../lib/vod-consensus-policy.js');
 const {POLICY_VERSION}=require('../lib/version.js');
 
 const LEADER_BY_CREW = Object.freeze({
@@ -19,6 +20,12 @@ const LEADER_BY_CREW = Object.freeze({
 });
 
 const BLANK_SHEET_IMAGE_URL='https://crew-news-automation.vercel.app/api/blank-image';
+const VOD_CONSENSUS_MAX_STATIONS=4;
+const VOD_CONSENSUS_MAX_EVENT_AGE_DAYS=3;
+const VOD_CONSENSUS_LIST_CACHE_TTL_MS=60*60*1000;
+const VOD_CONSENSUS_DETAIL_CACHE_TTL_MS=6*60*60*1000;
+const vodConsensusListCache=new Map();
+const vodConsensusDetailCache=new Map();
 
 function safeStations(raw='') {
   return [...new Set(String(raw||'').split(',').map(v=>v.trim()).filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))].slice(0,20);
@@ -253,6 +260,159 @@ async function collectLeaderVods(req, leaderStation, activityDate) {
   }
 }
 
+function consensusStationOrder(payload, requestUrl) {
+  const crew=String(payload&&payload.strictCrew||'');
+  const selected=payload&&payload.selected||{};
+  const requested=requestUrl instanceof URL
+    ? safeStations(requestUrl.searchParams.get('stations')||'')
+    : safeStations('');
+  const evidence=Array.isArray(selected.evidenceStations) ? selected.evidenceStations : [];
+  return [...new Set([
+    String(selected.station||'').trim(),
+    String(LEADER_BY_CREW[crew]||'').trim(),
+    ...evidence.map(v=>String(v||'').trim()),
+    ...requested
+  ].filter(v=>/^[A-Za-z0-9_-]{2,64}$/.test(v)))].slice(0,VOD_CONSENSUS_MAX_STATIONS);
+}
+
+function shouldAttemptVodConsensus(payload, now=new Date()) {
+  if (!payload || payload.ok!==true || !payload.selected || payload.preservePrevious===true) return false;
+  const selected=payload.selected;
+  const activity=String(selected.summary||selected.displaySummary||'').trim();
+  if (!vodConsensusPolicy.isGenericForVodConsensus(activity)) return false;
+  const activityDate=vodPolicy.toDateOnly(selected.activityDate||selected.publishedAt||'');
+  if (!activityDate) return false;
+  const today=vodPolicy.kstDateNow(now);
+  if (activityDate>today) return false;
+  return vodPolicy.dayDistance(activityDate,today)<=VOD_CONSENSUS_MAX_EVENT_AGE_DAYS;
+}
+
+function cacheRead(map,key,ttl) {
+  const row=map.get(key);
+  if (!row) return null;
+  if (Date.now()-row.at>=ttl) {
+    map.delete(key);
+    return null;
+  }
+  return row.value;
+}
+
+function cacheWrite(map,key,value,maxSize=120) {
+  map.set(key,{at:Date.now(),value});
+  if (map.size>maxSize) {
+    const oldest=[...map.entries()].sort((a,b)=>a[1].at-b[1].at)[0];
+    if (oldest) map.delete(oldest[0]);
+  }
+}
+
+async function fetchVodListForConsensus(req,station) {
+  const key=String(station||'');
+  const cached=cacheRead(vodConsensusListCache,key,VOD_CONSENSUS_LIST_CACHE_TTL_MS);
+  if (cached) return {vods:cached,cacheHit:true};
+  try {
+    const path='/api/crew-news?station='+encodeURIComponent(key)+'&mode=vods&per_page=30';
+    const result=await invoke(crewNewsHandler,req,path);
+    const vods=result.statusCode>=200 && result.statusCode<300 && result.body && result.body.ok===true
+      ? (result.body.vods||[])
+      : [];
+    cacheWrite(vodConsensusListCache,key,vods);
+    return {vods,cacheHit:false};
+  } catch (_) {
+    return {vods:[],cacheHit:false};
+  }
+}
+
+async function fetchVodDetailForConsensus(req,station,id) {
+  const key=String(station||'')+':'+String(id||'');
+  const cached=cacheRead(vodConsensusDetailCache,key,VOD_CONSENSUS_DETAIL_CACHE_TTL_MS);
+  if (cached) return {vod:cached,cacheHit:true};
+  try {
+    const path='/api/crew-news?station='+encodeURIComponent(station)+'&mode=vod-detail&title_no='+encodeURIComponent(id);
+    const result=await invoke(crewNewsHandler,req,path);
+    const vod=result.statusCode>=200 && result.statusCode<300 && result.body && result.body.ok===true
+      ? (result.body.vod||null)
+      : null;
+    if (vod) cacheWrite(vodConsensusDetailCache,key,vod);
+    return {vod,cacheHit:false};
+  } catch (_) {
+    return {vod:null,cacheHit:false};
+  }
+}
+
+async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date()) {
+  if (!shouldAttemptVodConsensus(payload,now)) return payload;
+  const crew=String(payload.strictCrew||'');
+  const selected=payload.selected||{};
+  const stations=consensusStationOrder(payload,requestUrl);
+  if (stations.length<2) return payload;
+
+  const vodsByStation=new Map();
+  let consensus=null;
+  let networkListRequests=0;
+  const checkedStations=[];
+
+  for (const station of stations) {
+    const fetched=await fetchVodListForConsensus(req,station);
+    if (!fetched.cacheHit) networkListRequests+=1;
+    checkedStations.push(station);
+    vodsByStation.set(station,fetched.vods||[]);
+    consensus=vodConsensusPolicy.findVodConsensus({
+      crew,
+      activityDate:selected.activityDate,
+      vodsByStation
+    });
+    if (consensus) break;
+  }
+
+  if (!consensus) return payload;
+
+  const displayDate=String(selected.displayDate||'').trim();
+  const nextSelected={
+    ...selected,
+    summary:consensus.label,
+    displaySummary:consensus.label,
+    displayText:crew+' - '+consensus.label+(displayDate?' ('+displayDate+')':'')+' 📌',
+    publicVerification:'vod_consensus',
+    vodConsensusSignature:consensus.signature,
+    vodConsensusSupportCount:consensus.supportCount,
+    vodConsensusSupportStations:consensus.supportStations,
+    vodConsensusCheckedStations:checkedStations,
+    vodConsensusListRequests:networkListRequests
+  };
+
+  let networkDetailRequests=0;
+  if (!String(nextSelected.imageUrl||'').trim()) {
+    const preferred=vodConsensusPolicy.pickRepresentativeVod(consensus,{preferredStation:selected.station});
+    const ordered=[];
+    const seen=new Set();
+    for (const vod of [preferred,...consensus.supporters.map(row=>row.vod)]) {
+      const id=String(vod&&vod.id||'');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ordered.push(vod);
+    }
+
+    for (const vod of ordered.slice(0,2)) {
+      const fetched=await fetchVodDetailForConsensus(req,vod.station||'',vod.id);
+      if (!fetched.cacheHit) networkDetailRequests+=1;
+      const detail=fetched.vod;
+      if (!detail || !detail.imageUrl) continue;
+      nextSelected.imageUrl=detail.imageUrl;
+      nextSelected.sheetImageUrl=detail.sheetImageUrl||detail.imageUrl;
+      nextSelected.imageSource='member_vod_consensus';
+      nextSelected.imageSelectionReason='멀티멤버 VOD 공통 활동명 일치';
+      nextSelected.fallbackVodUrl=vod.vodUrl||('https://vod.sooplive.com/player/'+vod.id);
+      break;
+    }
+  }
+  nextSelected.vodConsensusDetailRequests=networkDetailRequests;
+
+  return outputPolicy.refreshFingerprintState(
+    {...payload,selected:nextSelected},
+    core._internals.stableFingerprint,
+    true
+  );
+}
 async function attachEditorialVodFallback(req,payload) {
   if (!payload || payload.ok!==true || !payload.selected || payload.preservePrevious===true) return payload;
   if (String(payload.selected.imageUrl||'').trim()) return payload;
@@ -426,6 +586,7 @@ module.exports=async function handler(req,res) {
       blankUrl:BLANK_SHEET_IMAGE_URL,
       stableFingerprint:core._internals.stableFingerprint
     });
+    body=await attachVodConsensusFallback(req,body,requestUrl);
     body=await attachEditorialVodFallback(req,body);
   } catch (_) {
     body=captured.state.body;
@@ -440,6 +601,7 @@ module.exports._internals={
   ...enrichment,
   ...outputPolicy,
   ...vodPolicy,
+  ...vodConsensusPolicy,
   safeStations,
   captureRes,
   sameEvent,
@@ -454,6 +616,13 @@ module.exports._internals={
   buildSelected,
   clearInvalidSelection,
   enrichPayload,
+  consensusStationOrder,
+  shouldAttemptVodConsensus,
+  fetchVodListForConsensus,
+  fetchVodDetailForConsensus,
+  attachVodConsensusFallback,
   attachEditorialVodFallback,
+  VOD_CONSENSUS_MAX_STATIONS,
+  VOD_CONSENSUS_MAX_EVENT_AGE_DAYS,
   BLANK_SHEET_IMAGE_URL
 };
