@@ -400,4 +400,16 @@ for (const [crew, current, expected] of [
   const verified=apply({...p,selected:{...p.selected,imageVerifiedGroup:true}});
   assert.equal(verified.selected.imageUrl,'https://example.com/solo-avatar.jpg');
 }
+// The selected 10/8 four-person PEAK notice and verified overnight replay match.
+{
+  const p={ok:true,strictCrew:'ZZAM지트',selected:{id:'209239633',summary:'PEAK 합방',displaySummary:'PEAK 합방',activityDate:'2026-10-08',imageUrl:'',sheetImageUrl:''},results:[{posts:[{id:'209239633',originalTitle:'📺2026.10.08 방송공지',contents:'오늘은 ZZAM지트 PEAK 합방 갑니다! 숙봉, 루센, 냐냐, 에이레네 4명이서 갑니다!'}]}]};
+  const out=apply(p);
+  assert.equal(out.selected.imageSource,'member_vod_verified');
+  assert.match(out.selected.imageUrl,/20261008_E2D1DE2F_297687015_1_r/);
+  assert.equal(out.selected.fallbackVodUrl,'https://vod.sooplive.com/player/209278713');
+  const unrelated=apply({...p,selected:{...p.selected,id:'newer-peek'},results:[{posts:[{id:'newer-peek',contents:'숙봉 루센 냐냐 에이레네 PEAK 합방'}]}]});
+  assert.equal(unrelated.selected.imageUrl,'');
+  const unconfirmed=apply({...p,results:[{posts:[{id:'209239633',contents:'ZZAM지트 PEAK 합방 숙봉 혼자 갑니다'}]}]});
+  assert.equal(unconfirmed.selected.imageUrl,'');
+}
 console.log('output-policy regression tests passed');
