@@ -11,4 +11,8 @@ assert.deepStrictEqual(batch._internals.consensusStationOrder(payload,url),['seh
 assert.equal(batch._internals.shouldAttemptVodConsensus(payload,new Date('2026-10-12T03:00:00Z')),true);
 assert.equal(batch._internals.shouldAttemptVodConsensus({...payload,selected:{...payload.selected,summary:'PEAK 합방',displaySummary:'PEAK 합방'}},new Date('2026-10-12T03:00:00Z')),false);
 assert.equal(batch._internals.shouldAttemptVodConsensus({...payload,selected:{...payload.selected,activityDate:'2026-10-01'}},new Date('2026-10-12T03:00:00Z')),false);
+
+assert.equal(batch._internals.VOD_CONSENSUS_IMAGE_MAX_STATIONS,8);
+assert.equal(batch._internals.VOD_CONSENSUS_IMAGE_MAX_DETAILS,4);
+
 console.log('vod-consensus-cost-policy tests passed');
