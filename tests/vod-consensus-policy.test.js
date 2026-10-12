@@ -28,4 +28,36 @@ assert.deepStrictEqual(new Set(consensus.supportStations),new Set(['seh0305','qw
 assert.equal(policy.pickRepresentativeVod(consensus,{preferredStation:'seh0305'}).station,'seh0305');
 assert.equal(policy.findVodConsensus({crew:'자라섬',activityDate,vodsByStation:new Map([['qwhy1040',byStation.get('qwhy1040')]])}),null);
 assert.equal(policy.findVodConsensus({crew:'자라섬',activityDate:'2026-10-01',vodsByStation:byStation}),null);
+
+assert.equal(
+  policy.isCompatibleActivitySignature('football:3:3:내전','football:any:내전'),
+  true,
+  'a less-specific football internal-match title may still be used as an image candidate after exact consensus'
+);
+assert.equal(
+  policy.isCompatibleActivitySignature('football:3:3:내전','named:peak:합방'),
+  false
+);
+
+const imageCandidates=policy.collectCompatibleVodCandidates({
+  crew:'자라섬',
+  activityDate,
+  consensus,
+  vodsByStation:byStation,
+  preferredStation:'seh0305'
+});
+assert.deepStrictEqual(
+  imageCandidates.map(v=>v.id),
+  ['209566579','209578907','209573951'],
+  'one best candidate per broadcaster should be checked before a compatible less-specific VOD'
+);
+assert.equal(
+  policy.isRepresentativeThumbnailUrl('https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x&column=2&t=123'),
+  true
+);
+assert.equal(
+  policy.isRepresentativeThumbnailUrl('https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=x'),
+  false
+);
+
 console.log('vod-consensus-policy tests passed');
