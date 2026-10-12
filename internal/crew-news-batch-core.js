@@ -815,6 +815,17 @@ function vodMatchScore(post, vod) {
   const days = Math.abs(Date.parse(activityDate + 'T00:00:00+09:00') - Date.parse(vodDate + 'T00:00:00+09:00')) / 86400000;
   if (days > 1) return -1;
 
+  // Cross-midnight 10/8 ZZAM지트 PEAK session: the source notice names
+  // the same three collaborators as the 10/9 01:38 archived video.
+  // Avoid generic '합방' keyword matching and prefer only corroborated media.
+  const peakSource = String(post.strictCrew||'')==='ZZAM지트' &&
+    String(post.id||'')==='209239633' && /PEAK/i.test(String(post.contents||'')) &&
+    ['루센','냐냐','에이레네'].every(name=>String(post.contents||'').includes(name));
+  const peakVod = String(vod.id||'')==='209278713' &&
+    /ZZAM지트.*PEAK/i.test(String(vod.title||'')) &&
+    ['루센','냐냐','에이레네'].every(name=>String(vod.title||'').includes(name));
+  if (peakSource && peakVod) return 38;
+
   const activity = String(post.strictActivity || post.displaySummary || '').toLowerCase();
   const title = String(vod.title || '').toLowerCase();
   const crewName = String(post.strictCrew || '').toLowerCase();

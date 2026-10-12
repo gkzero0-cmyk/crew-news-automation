@@ -111,4 +111,11 @@ assert(
   'explicitly verified travel-event VOD media may still be used'
 );
 
+// Exact ZZAM지트 PEAK source and recorded VOD describe the same 4-person event.
+const peakPost={id:'209239633',strictCrew:'ZZAM지트',strictActivity:'합방',activityDate:'2026-10-08',contents:'오늘 저녁 8시 ZZAM지트에서 PEAK 합방. 숙봉 루센 냐냐 에이레네',displaySummary:'ZZAM지트 합방'};
+const peakVod={id:'209278713',title:'[ZZAM지트]PEAK 진엔딩팟! W.루센, 냐냐, 에이레네',publishedAt:'2026-10-09 01:38:17',imageUrl:'',vodUrl:'https://vod.sooplive.com/player/209278713'};
+assert(vodMatchScore(peakPost,peakVod)>=24,'confirmed overnight event must be eligible for VOD detail thumbnail retrieval');
+assert.equal(vodMatchScore({...peakPost,contents:'ZZAM지트 PEAK 합방'},peakVod),-1,'missing corroborated participants must prevent forced image matching');
+assert.equal(vodMatchScore(peakPost,{...peakVod,id:'some-other-video'}),-1,'unknown video must not inherit the verified event image exception');
+assert(vodMatchScore({...peakPost,strictCrew:'다른크루'},peakVod)<24,'other crews must not inherit the high-confidence ZZAM media exception');
 console.log('continuous event media policy: ok');
