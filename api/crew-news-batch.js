@@ -454,6 +454,8 @@ async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date())
 async function attachEditorialVodFallback(req,payload) {
   if (!payload || payload.ok!==true || !payload.selected || payload.preservePrevious===true) return payload;
   if (String(payload.selected.imageUrl||'').trim()) return payload;
+  // Meeting VODs and user-confirmed wins need visual evidence, not a matching title.
+  if (/회의/.test(String(payload.selected.summary||payload.selected.displaySummary||'')) || outputPolicy.confirmedOutcomeForSelection(payload)) return payload;
   const crew=String(payload.strictCrew||'');
   const leaderStation=LEADER_BY_CREW[crew]||'';
   if (!leaderStation) return payload;
@@ -626,6 +628,10 @@ module.exports=async function handler(req,res) {
     });
     body=await attachVodConsensusFallback(req,body,requestUrl);
     body=await attachEditorialVodFallback(req,body);
+    body=outputPolicy.applyFinalImageSafety(body,{
+      blankUrl:BLANK_SHEET_IMAGE_URL,
+      stableFingerprint:core._internals.stableFingerprint
+    });
   } catch (_) {
     body=captured.state.body;
   }
