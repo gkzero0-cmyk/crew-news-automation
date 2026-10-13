@@ -78,6 +78,22 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   }});
   assert.strictEqual(previouslyHardcodedRecap.selected.imageUrl,'','previous hardcoded recap image must be rejected');
   assert.match(previouslyHardcodedRecap.selected.imageSelectionReason,/방탈출 활동/);
+  // User-confirmed original poster attached to the selected 10/13 notice
+  // should be displayed; do not conflate it with the 10/14 recap image.
+  const sourcePoster='https://stimg.sooplive.com/NORMAL_BBS/7/26725487/32271791880950927.png';
+  const original=apply({...payload,selected:{
+    ...payload.selected,postUrl:'https://www.sooplive.com/station/dotcha/post/209697679',
+    imageUrl:sourcePoster,sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url='+encodeURIComponent(sourcePoster)+'&fit=sheet',
+    imageCandidateCount:1,imageAmbiguous:false,imageSource:'post_self',imagePostId:'209697679'
+  }});
+  assert.strictEqual(policy.isSelectedEventPoster(original),true);
+  assert.strictEqual(original.selected.imageUrl,sourcePoster);
+  assert.match(original.selected.imageSelectionReason,/원문 게시글/);
+  assert.strictEqual(original.selected.imagePostId,'209697679');
+  const wrongPost=apply({...payload,selected:{...original.selected,imagePostId:'209749253'}});
+  assert.strictEqual(wrongPost.selected.imageUrl,'','wrong post origin is still blocked');
+  const wrongSource=apply({...payload,selected:{...original.selected,imageSource:'verified_event_recap'}});
+  assert.strictEqual(wrongSource.selected.imageUrl,'','recap source cannot masquerade as original poster');
   const confirmed=apply({...payload,selected:{...payload.selected,imageVisualVerified:true}});
   assert.strictEqual(confirmed.selected.imageUrl,'https://stimg.sooplive.com/first.png','separately visually verified image may be accepted');
   const anotherEvent=apply({...payload,selected:{...payload.selected,id:'other-robl',activityDate:'2026-10-14'}});
