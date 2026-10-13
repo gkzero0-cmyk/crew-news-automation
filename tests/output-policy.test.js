@@ -66,7 +66,7 @@ function apply(payload) {
   const out=apply(payload);
   assert.equal(out.selected.summary,'나들이');
   assert.equal(out.selected.displaySummary,'장지수용소 나들이');
-  assert.equal(out.selected.displayText,'장지수용소 - 장지수용소 나들이 (10/5) 📌');
+  assert.equal(out.selected.displayText,'장지수용소 - 나들이 (10/5) 📌');
   assert.equal(out.selected.sheetImageUrl,'https://example.com/naduri.jpg');
 }
 
@@ -114,7 +114,7 @@ function apply(payload) {
   };
   const out=apply(payload);
   assert.equal(out.selected.displaySummary,'천타버스 추석특집');
-  assert.equal(out.selected.displayText,'천타버스 - 천타버스 추석특집 (9/26) 📌');
+  assert.equal(out.selected.displayText,'천타버스 - 추석특집 (9/26) 📌');
 }
 
 {
@@ -396,7 +396,7 @@ for (const [crew, current, expected] of [
   const out=apply(p);
   assert.equal(out.selected.imageUrl,'');
   assert.equal(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
-  assert.match(out.selected.imageSelectionReason,/단체 회의/);
+  assert.match(out.selected.imageSelectionReason,/단체 장면/);
   const verified=apply({...p,selected:{...p.selected,imageVerifiedGroup:true}});
   assert.equal(verified.selected.imageUrl,'https://example.com/solo-avatar.jpg');
 }

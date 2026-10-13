@@ -121,6 +121,6 @@ const recoveredPayload = batch._internals.applyOutputPolicy({
   stableFingerprint: batch._internals.stableFingerprint
 });
 assert.equal(recoveredPayload.selected.displaySummary, '장지수용소 나들이');
-assert.equal(recoveredPayload.selected.displayText, '장지수용소 - 장지수용소 나들이 (10/5) 📌');
+assert.equal(recoveredPayload.selected.displayText, '장지수용소 - 나들이 (10/5) 📌');
 
 console.log('external participation title regression: ok');

@@ -155,6 +155,7 @@ function detectActivity(raw = '') {
     [/종겜\s*합방/i, '종겜합방'],
     [/모캡/i, '모캡 합방'],
     [/메이드\s*카페/i, '메이드카페'],
+    [/설명회|상담회|강연회/i, '설명회'],
     [/점호/i, '점호'],
     [/(?:peak[^.!?\n]{0,40}합방|합방[^.!?\n]{0,40}peak)/i, 'PEAK 합방'],
     [/합방/i, '합방'],
@@ -733,6 +734,7 @@ function sameNewsScore(selected, candidate) {
 function unsuitablePostImageContext(post) {
   if (!post || !post.imageUrl) return true;
   if (REJECT_POST_IMAGE_IDS.has(String(post.id||''))) return true;
+  if (post.imageAmbiguous === true) return true;
 
   const title=String(post.originalTitle||post.title||'');
   const body=String(post.contents||'');
@@ -1263,7 +1265,7 @@ module.exports = async function handler(req, res) {
           : 'unavailable';
         if (
           verification && verification.verified &&
-          !selected.imageUrl && verification.imageUrl
+          !selected.imageAmbiguous && !selected.imageUrl && verification.imageUrl
         ) {
           selected.imageUrl = verification.imageUrl;
           selected.sheetImageUrl = verification.sheetImageUrl || verification.imageUrl;
@@ -1277,7 +1279,7 @@ module.exports = async function handler(req, res) {
 
     // 대표 소식 선정은 VOD 조회와 분리한다. VOD/썸네일 보조 조회 실패가
     // 이미 검증된 대표 소식 전체를 500으로 만들지 않도록 한다.
-    if (selected && !selected.imageUrl && !/회의/.test(String(selected.strictActivity||selected.displaySummary||''))) {
+    if (selected && !selected.imageUrl && !selected.imageAmbiguous && !/회의|점호/.test(String(selected.strictActivity||selected.displaySummary||''))) {
       const orderedStations = [
         ...new Set([
           selected._station,
@@ -1421,6 +1423,9 @@ module.exports = async function handler(req, res) {
       imagePostId: selected.imagePostId || '',
       imageSuitabilityScore: selected.imageSuitabilityScore ?? null,
       imageRejected: Boolean(selected.imageRejected),
+      imageSelectionReason:selected.imageAmbiguous?'복합 공지의 다중 이미지: 활동 장면 미확인':(selected.imageSelectionReason||''),
+      imageCandidateCount:Number(selected.imageCandidateCount||0),
+      imageAmbiguous:Boolean(selected.imageAmbiguous),
       fallbackVodUrl: selected.fallbackVodUrl || '',
       fingerprint: stableFingerprint(selected),
       representativeTier: selected.representativeTier,

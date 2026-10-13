@@ -453,7 +453,7 @@ async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date())
 }
 async function attachEditorialVodFallback(req,payload) {
   if (!payload || payload.ok!==true || !payload.selected || payload.preservePrevious===true) return payload;
-  if (String(payload.selected.imageUrl||'').trim()) return payload;
+  if (String(payload.selected.imageUrl||'').trim() || payload.selected.imageAmbiguous===true) return payload;
   // Meeting VODs and user-confirmed wins need visual evidence, not a matching title.
   if (/회의/.test(String(payload.selected.summary||payload.selected.displaySummary||'')) || outputPolicy.confirmedOutcomeForSelection(payload)) return payload;
   const crew=String(payload.strictCrew||'');
@@ -510,6 +510,10 @@ function buildSelected(crew,event,fingerprint) {
     station:event.station,
     author:event.author||'',
     postUrl:event.postUrl,
+    originalTitle:event.originalTitle||'',
+    contents:event.contents||'',
+    imageAmbiguous:Boolean(event.imageAmbiguous),
+    imageCandidateCount:Number(event.imageCandidateCount||0),
     summary:event.activity,
     displaySummary:event.displaySummary,
     extractionQuality:event.extractionQuality ?? 8,
