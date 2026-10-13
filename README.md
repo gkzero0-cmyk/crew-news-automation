@@ -11,7 +11,7 @@
 - `/api/crew-news-batch` — 크루별 대표 소식 최종 판정
 - `/api/image` — 검증된 SOOP 이미지/VOD 썸네일 프록시
 
-현재 서버 정책: `representative-v6.6-server`
+현재 서버 정책: `representative-v6.7-server`
 
 버전 정보는 `lib/version.js`를 단일 기준으로 사용합니다. API 상태/배치 응답과 회귀 테스트가 같은 정책 버전을 참조합니다.
 
@@ -65,7 +65,7 @@ GitHub/Vercel 배포는 Google Apps Script 편집기의 코드를 자동으로 �
 - 색상 자가복구 유지
 - 실행본 식별자 `crew-apps-script-v1.8.1` 유지
 
-Vercel 서버 정책 `representative-v6.6-server`와 Apps Script 실행 버전/주기는 별도로 관리합니다.
+Vercel 서버 정책 `representative-v6.7-server`와 Apps Script 실행 버전/주기는 별도로 관리합니다.
 서버 정책을 갱신하기 위해 Apps Script 주기를 변경하지 않습니다.
 
 완료된 실행은 `자동화 상태`의 진단값으로 확인합니다.
