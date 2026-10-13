@@ -67,6 +67,13 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   const out=apply(payload);
   assert.strictEqual(out.selected.displayText,'자라섬 - 로블록스 방탈출 합방 (10/13) 📌');
   assert.strictEqual(out.selected.summary,'로블록스 방탈출 합방');
+  assert.strictEqual(out.selected.id,'209697679','official announcement remains the news source');
+  assert.strictEqual(out.selected.imagePostId,'209749253','verified recap contributes image only');
+  assert.strictEqual(out.selected.imageSource,'verified_event_recap');
+  assert.match(out.selected.imageUrl,/59621791912830111\.png$/);
+  assert.match(out.selected.imageSelectionReason,/단체 활동 장면/);
+  const anotherEvent=apply({...payload,selected:{...payload.selected,id:'other-robl',activityDate:'2026-10-14'}});
+  assert.strictEqual(anotherEvent.selected.imagePostId,undefined,'verified recap image must not attach to unrelated event');
   assert.strictEqual(require('../api/crew-news-batch.js')._internals.shouldAttemptVodConsensus(out,new Date('2026-10-13T13:00:00Z')),false,'specific published game must not be overridden by generic VOD consensus');
   assert.strictEqual(require('../api/crew-news-batch.js')._internals.contradictsSelectedEvent(payload,{signature:'football:3:3:내전'}),true,'Roblox post must never become a football VOD title');
   const withoutPartner=apply({...payload,results:[]});
@@ -99,5 +106,10 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
     contents:'어제 자라섬 합방 너무 재밌었다. 다들 고생했어.'};
   assert.strictEqual(core.strictCrewPost(completedCollab,'자라섬','ioocom'),null,
     'completed event personal reflections should not become fresh news');
+  const parsed=enrichment.descriptorForPost({...completedCollab,station:'ioocom',authorId:'ioocom'},'자라섬','dstv');
+  assert.strictEqual(parsed,null,'event-enrichment path must not promote a completed-collab recap either');
+  const completedWithNewNotice={...completedCollab,id:'recap-and-new',contents:'어제 자라섬 합방 너무 재밌었다. 내일 자라섬 정기회의 진행 예정입니다.'};
+  assert.ok(enrichment.descriptorForPost({...completedWithNewNotice,station:'ioocom',authorId:'ioocom'},'자라섬','dstv'),
+    'a separately announced future event should remain eligible despite a personal recap');
 }
 console.log('semantic news and image policy regressions: ok');
