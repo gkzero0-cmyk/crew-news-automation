@@ -42,6 +42,9 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   assert.strictEqual(description.imageUrl,'');
   const out=apply({ok:true,strictCrew:'자라섬',selected:{...normalized,id:'209711983',summary:'합방',displaySummary:'크루 합방',activityDate:'2026-10-13'},results:[{posts:[normalized]}]});
   assert.strictEqual(out.selected.displayText,'자라섬 - 로블록스 방탈출 합방 (10/13) 📌');
+  const unsafeEventVod=apply({ok:true,strictCrew:'자라섬',selected:{id:'209711983',summary:'로블록스 방탈출 합방',displaySummary:'로블록스 방탈출 합방',activityDate:'2026-10-13',imageAmbiguous:true,imageUrl:'https://videoimg.sooplive.com/solo.png',sheetImageUrl:'https://videoimg.sooplive.com/solo.png',imageSource:'leader_vod_same_day'}});
+  assert.strictEqual(unsafeEventVod.selected.imageUrl,'');
+  assert.match(unsafeEventVod.selected.imageSelectionReason,/복합 공지/);
 }
 {
   const p={ok:true,strictCrew:'진드기',selected:{id:'209685379',summary:'점호',displaySummary:'진드기 점호',activityDate:'2026-10-13',imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=solo',sheetImageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=solo',imageSource:'member_vod'},results:[{posts:[{id:'209685379',originalTitle:'[10.13] 진드기 점호중!',contents:'점호 참여중임다!'}]}]};
