@@ -68,12 +68,20 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   assert.strictEqual(out.selected.displayText,'자라섬 - 로블록스 방탈출 합방 (10/13) 📌');
   assert.strictEqual(out.selected.summary,'로블록스 방탈출 합방');
   assert.strictEqual(out.selected.id,'209697679','official announcement remains the news source');
-  assert.strictEqual(out.selected.imagePostId,'209749253','verified recap contributes image only');
-  assert.strictEqual(out.selected.imageSource,'verified_event_recap');
-  assert.match(out.selected.imageUrl,/59621791912830111\.png$/);
-  assert.match(out.selected.imageSelectionReason,/단체 활동 장면/);
+  assert.strictEqual(out.selected.imageUrl,'','unverified Roblox event images must not be shown');
+  assert.strictEqual(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
+  assert.match(out.selected.imageSelectionReason,/방탈출 활동/);
+  const previouslyHardcodedRecap=apply({...payload,selected:{
+    ...payload.selected,
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/8/861438/59621791912830111.png',
+    imageSource:'verified_event_recap',imagePostId:'209749253'
+  }});
+  assert.strictEqual(previouslyHardcodedRecap.selected.imageUrl,'','previous hardcoded recap image must be rejected');
+  assert.match(previouslyHardcodedRecap.selected.imageSelectionReason,/방탈출 활동/);
+  const confirmed=apply({...payload,selected:{...payload.selected,imageVisualVerified:true}});
+  assert.strictEqual(confirmed.selected.imageUrl,'https://stimg.sooplive.com/first.png','separately visually verified image may be accepted');
   const anotherEvent=apply({...payload,selected:{...payload.selected,id:'other-robl',activityDate:'2026-10-14'}});
-  assert.strictEqual(anotherEvent.selected.imagePostId,undefined,'verified recap image must not attach to unrelated event');
+  assert.strictEqual(anotherEvent.selected.imageUrl,'https://stimg.sooplive.com/first.png','unrelated event is not affected by this verified-mismatch block');
   assert.strictEqual(require('../api/crew-news-batch.js')._internals.shouldAttemptVodConsensus(out,new Date('2026-10-13T13:00:00Z')),false,'specific published game must not be overridden by generic VOD consensus');
   assert.strictEqual(require('../api/crew-news-batch.js')._internals.contradictsSelectedEvent(payload,{signature:'football:3:3:내전'}),true,'Roblox post must never become a football VOD title');
   const withoutPartner=apply({...payload,results:[]});
