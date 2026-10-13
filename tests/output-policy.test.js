@@ -396,7 +396,7 @@ for (const [crew, current, expected] of [
   const out=apply(p);
   assert.equal(out.selected.imageUrl,'');
   assert.equal(out.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
-  assert.match(out.selected.imageSelectionReason,/단체 회의/);
+  assert.match(out.selected.imageSelectionReason,/단체 장면/);
   const verified=apply({...p,selected:{...p.selected,imageVerifiedGroup:true}});
   assert.equal(verified.selected.imageUrl,'https://example.com/solo-avatar.jpg');
 }
