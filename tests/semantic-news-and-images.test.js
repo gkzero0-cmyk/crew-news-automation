@@ -72,4 +72,32 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   const withoutPartner=apply({...payload,results:[]});
   assert.strictEqual(withoutPartner.selected.displayText,'자라섬 - 로블록스 합방 (10/13) 📌','game itself is still explicit even if detail cannot be verified');
 }
+// 2026-10-14: '친구들 로블록스에 영입시킨거' is a metaphor in a
+// post-event personal recap, not a new member being recruited to 자라섬.
+{
+  const post={
+    id:'209749253',title:'너무 재밌당',originalTitle:'너무 재밌당',
+    authorId:'ioocom',publishedAt:'2026-10-14 02:35:43',
+    boardName:'💜뚜 공지💜',accessType:'public',
+    contents:'ㅋㅋㅋㅋ\n아 오늘 로블록스 너무 재밌었다\n자라섬 친구들 로블록스에 영입시킨거 나이챠\n오늘 지각했는데 미안합니다ㅠㅠ\n목요일에 보자 ❤️',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/8/861438/59621791912830111.png'
+  };
+  assert.strictEqual(core.isMetaphoricalGameRecruitment(post.contents),true);
+  assert.strictEqual(core.isPersonalAfterEventReflection(post.originalTitle,post.contents),true);
+  assert.strictEqual(core.strictCrewPost(post,'자라섬','ioocom'),null,
+    'newer recap must not override 10/13 Roblox escape-room with bogus 10/14 recruitment');
+  const actualMemberNotice={...post,id:'valid-hire',originalTitle:'자라섬 신규 크루원 영입',title:'자라섬 신규 크루원 영입',
+    contents:'신규 크루원 한 명을 자라섬에 정식 영입했습니다.'};
+  assert.strictEqual(core.isMetaphoricalGameRecruitment(actualMemberNotice.contents),false);
+  assert.ok(core.strictCrewPost(actualMemberNotice,'자라섬','ioocom'),
+    'genuine roster recruitment is still an eligible achievement');
+  const eventNotice={...post,id:'209697679',originalTitle:'오뱅공',title:'오뱅공',
+    contents:'오늘 밤 10시에 자라섬 로볼록스 합방이 있습니다!'};
+  assert.ok(core.strictCrewPost(eventNotice,'자라섬','ioocom'),
+    'real new collaboration remains eligible');
+  const completedCollab={...post,id:'after-party',originalTitle:'너무 즐거웠어요',title:'너무 즐거웠어요',
+    contents:'어제 자라섬 합방 너무 재밌었다. 다들 고생했어.'};
+  assert.strictEqual(core.strictCrewPost(completedCollab,'자라섬','ioocom'),null,
+    'completed event personal reflections should not become fresh news');
+}
 console.log('semantic news and image policy regressions: ok');
