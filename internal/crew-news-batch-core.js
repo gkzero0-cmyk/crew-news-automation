@@ -452,6 +452,28 @@ function deriveExternalParticipationDisplaySummary(raw = '', crew = '') {
   return '외부 콘텐츠 참가';
 }
 
+// A member bringing friends INTO A GAME is not a new member joining the crew.
+// This is especially important in post-event reflections whose latest
+// published timestamp would otherwise replace the actual event notice.
+function isMetaphoricalGameRecruitment(text='') {
+  const raw=String(text||'');
+  const game=/(?:로(?:블|볼)록스|마인크래프트|마크|발로란트|오버워치|피파|리그\s*오브\s*레전드|롤|게임|서버)/i;
+  const gameAdmission=/(?:에|로|안에)\s*(?:영입|입문|데려|초대|가입|끌어들)/;
+  const trueMembership=/(?:크루|크루원|멤버|신입|신규)[^.!?\n]{0,30}(?:영입|합류|가입|선발|확정)|(?:영입|합류|가입)[^.!?\n]{0,30}(?:크루원|멤버|크루)/;
+  return game.test(raw) && [...raw.split(/[.!?\n]/)].some(part=>
+    game.test(part) && gameAdmission.test(part) && !trueMembership.test(part)
+  );
+}
+
+function isPersonalAfterEventReflection(title='',body='') {
+  const heading=String(title||'');
+  const text=String(body||'');
+  const past=/(?:재밌었|재미있었|즐거웠|고생했|수고했|재밌었다|재미있었다|끝났|마쳤|잘\s*놀았|다녀왔|하고\s*왔|후기|소감)/i.test(text);
+  const newOutcome=/(?:우승|최종\s*선발|합격|신입\s*(?:크루원|멤버)|크루원\s*영입|정식\s*합류|탈퇴\s*확정)/i.test(text);
+  const eventAnnouncement=/(?:합방|점호|회의|대회|모임|콘텐츠|컨텐츠|내전|영입|선발)[^.!?\n]{0,35}(?:예정|진행\s*(?:예정|합니다|해요)|시작|있습니다|합니다|해요|확정|모집\s*(?:중|합니다))|(?:오늘|내일|모레)[^.!?\n]{0,45}(?:합방|점호|회의|대회|모임|콘텐츠|컨텐츠|내전)\s*(?:있|합|해|예정)/i.test(text);
+  return past && !newOutcome && !eventAnnouncement &&
+    !/(?:모집|합방|회의|점호|대회|우승|영입|신규\s*크루원|가입)/.test(heading);
+}
 function strictCrewPost(post, crew, station) {
   if (!post || !crew) return null;
   const title = String(post.title || '');
@@ -476,6 +498,9 @@ function strictCrewPost(post, crew, station) {
   const leader = station === LEADER_BY_CREW[crew];
   const override = MANUAL_SUMMARY[crew] && MANUAL_SUMMARY[crew][id] || '';
   if (!override && /방셀|당첨자|당첨\s*안내|보상|경품|상품|배송|배달|전달\s*완료|수령|정산/i.test(sourceTitle)) return null;
+  // A recap with an incidental game-invite metaphor is not a recruitment.
+  if (!override && isMetaphoricalGameRecruitment(sourceTitle+'\n'+body)) return null;
+  if (!override && isPersonalAfterEventReflection(sourceTitle,body)) return null;
 
   const activityText = sourceTitle + '\n' + body;
   const escapedCrewForContext = String(crew);
@@ -1444,6 +1469,8 @@ module.exports._internals = {
   deriveCompetitiveDisplaySummary,
   sameRepresentativeActivity,
   compareRepresentativeCandidates,
+  isMetaphoricalGameRecruitment,
+  isPersonalAfterEventReflection,
   strictCrewPost,
   parseTime,
   resolveActivityDate,
