@@ -1265,7 +1265,7 @@ module.exports = async function handler(req, res) {
           : 'unavailable';
         if (
           verification && verification.verified &&
-          !selected.imageUrl && verification.imageUrl
+          !selected.imageAmbiguous && !selected.imageUrl && verification.imageUrl
         ) {
           selected.imageUrl = verification.imageUrl;
           selected.sheetImageUrl = verification.sheetImageUrl || verification.imageUrl;
@@ -1279,7 +1279,7 @@ module.exports = async function handler(req, res) {
 
     // 대표 소식 선정은 VOD 조회와 분리한다. VOD/썸네일 보조 조회 실패가
     // 이미 검증된 대표 소식 전체를 500으로 만들지 않도록 한다.
-    if (selected && !selected.imageUrl && !/회의|점호/.test(String(selected.strictActivity||selected.displaySummary||''))) {
+    if (selected && !selected.imageUrl && !selected.imageAmbiguous && !/회의|점호/.test(String(selected.strictActivity||selected.displaySummary||''))) {
       const orderedStations = [
         ...new Set([
           selected._station,
@@ -1423,6 +1423,9 @@ module.exports = async function handler(req, res) {
       imagePostId: selected.imagePostId || '',
       imageSuitabilityScore: selected.imageSuitabilityScore ?? null,
       imageRejected: Boolean(selected.imageRejected),
+      imageSelectionReason:selected.imageAmbiguous?'복합 공지의 다중 이미지: 활동 장면 미확인':(selected.imageSelectionReason||''),
+      imageCandidateCount:Number(selected.imageCandidateCount||0),
+      imageAmbiguous:Boolean(selected.imageAmbiguous),
       fallbackVodUrl: selected.fallbackVodUrl || '',
       fingerprint: stableFingerprint(selected),
       representativeTier: selected.representativeTier,
