@@ -560,13 +560,26 @@ function proxyImageUrl(req, url) {
   return `${proto}://${host}/api/image?url=${encodeURIComponent(url)}&fit=sheet`;
 }
 
+// An image-bearing personal/news roundup is not a single event poster.
+// Preserve its attachments for audit, but do not claim the first image
+// represents a crew activity when multiple unrelated topics are present.
+function mixedTopicImageAmbiguity(postTitle='',body='',imageCount=0) {
+  if (Number(imageCount)<2) return false;
+  const title=String(postTitle||'');
+  const text=String(body||'');
+  const crewEvent=/(?:크루|자라섬|진드기|천타버스|머리퍼리|조적단|ZZAM지트|강씨세가|장지수용소)[^.!?\n]{0,65}(?:합방|내전|점호|회의|대회|콘텐츠|컨텐츠)|(?:합방|내전|점호|회의)[^.!?\n]{0,30}(?:크루|멤버)/i.test(text);
+  const personal=/(?:시그풍|시그니처|풍선|움짤\s*프사|프로필|방셀|개인\s*이벤트|보석함|후원|미션|팬카페)/i.test(text);
+  return crewEvent && personal && /(?:오늘|공지|공쥬|소식|컨텐츠|콘텐츠)/i.test(title+' '+text);
+}
+
 function normalizePost(row, station, menuByNo, req) {
   const id = String(first(row, ['title_no', 'titleNo', 'post_no', 'postNo', 'article_no', 'articleNo', 'no']) || '').replace(/\D/g, '');
   const boardName = normalizeBoardName(row, menuByNo);
-  const images = collectImageUrls(row);
-  const imageUrl = images[0] || '';
+  const images = collectImageUrls(row).slice(0,12);
   const contents = cleanBody(first(row, ['contents', 'content', 'body']), 12000);
   const rawTitle = safeText(first(row, ['title_name', 'title', 'subject']), 500);
+  const imageAmbiguous=mixedTopicImageAmbiguity(rawTitle,contents,images.length);
+  const imageUrl = imageAmbiguous ? '' : (images[0] || '');
   return {
     id,
     title: summarizeGenericPostTitle(rawTitle, contents),
@@ -580,6 +593,9 @@ function normalizePost(row, station, menuByNo, req) {
     postUrl: id ? `https://www.sooplive.com/station/${station}/post/${id}` : '',
     imageUrl,
     sheetImageUrl: proxyImageUrl(req, imageUrl),
+    imageCandidateCount:images.length,
+    imageAmbiguous,
+    imageAmbiguityReason:imageAmbiguous?'복합 공지의 다중 이미지: 행사 이미지 확인 불가':'',
     hashtags: first(row, ['hashtags', 'hash_tags', 'tags']) || [],
     contents
   };
@@ -734,6 +750,7 @@ module.exports._internals = {
   absoluteHttps,
   looksLikeContentImage,
   collectImageUrls,
+  mixedTopicImageAmbiguity,
   classifyAccess,
   normalizePost,
   summarizeGenericPostTitle,
