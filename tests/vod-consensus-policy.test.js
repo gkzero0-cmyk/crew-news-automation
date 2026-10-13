@@ -28,6 +28,10 @@ assert.deepStrictEqual(new Set(consensus.supportStations),new Set(['seh0305','qw
 assert.equal(policy.pickRepresentativeVod(consensus,{preferredStation:'seh0305'}).station,'seh0305');
 assert.equal(policy.findVodConsensus({crew:'자라섬',activityDate,vodsByStation:new Map([['qwhy1040',byStation.get('qwhy1040')]])}),null);
 assert.equal(policy.findVodConsensus({crew:'자라섬',activityDate:'2026-10-01',vodsByStation:byStation}),null);
+assert.equal(policy.vodPublicationDelayDays('2026-10-13','2026-10-12 03:08:37'),-1);
+assert.equal(policy.vodPublicationDelayDays('2026-10-11','2026-10-12 03:08:37'),1);
+assert.equal(policy.findVodConsensus({crew:'자라섬',activityDate:'2026-10-13',vodsByStation:byStation}),null,'10/12 replays cannot identify a 10/13 event');
+assert.deepStrictEqual(policy.collectCompatibleVodCandidates({crew:'자라섬',activityDate:'2026-10-13',consensus:{signature:'football:3:3:내전'},vodsByStation:byStation}),[],'pre-event replays cannot supply thumbnails to a later event');
 
 assert.equal(
   policy.isCompatibleActivitySignature('football:3:3:내전','football:any:내전'),

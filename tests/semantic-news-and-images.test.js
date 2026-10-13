@@ -58,4 +58,18 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   const out=apply({ok:true,strictCrew:'머리퍼리',selected:{id:'202',summary:'정기회의',displaySummary:'머리퍼리 정기회의',activityDate:'2026-10-12'},results:[{posts:[post]}]});
   assert.strictEqual(out.selected.displayText,'머리퍼리 - 정기회의 (10/12) 📌');
 }
+// 10/13 was Roblox escape-room collab, not a 10/11 football internal match
+// merely published after midnight on 10/12.
+{
+  const notice={id:'209697679',originalTitle:'오뱅공',title:'오뱅공',contents:'오늘은 10시에 자라섬 로볼록스 합방이 있습니다!',publishedAt:'2026-10-13 17:42:33',activityDate:'2026-10-13'};
+  const partner={id:'209711983',originalTitle:'261013 오늘',contents:'오늘 밤 10시에 자라섬 로블록스 합방이 있답니다! 방 탈출 한다는데 기대된당',publishedAt:'2026-10-13 20:25:36',activityDate:'2026-10-13'};
+  const payload={ok:true,strictCrew:'자라섬',selected:{...notice,summary:'합방',displaySummary:'크루 합방',activityDate:'2026-10-13',imageUrl:'https://stimg.sooplive.com/first.png',imageSource:'post_self'},results:[{station:'star124',posts:[partner]}]};
+  const out=apply(payload);
+  assert.strictEqual(out.selected.displayText,'자라섬 - 로블록스 방탈출 합방 (10/13) 📌');
+  assert.strictEqual(out.selected.summary,'로블록스 방탈출 합방');
+  assert.strictEqual(require('../api/crew-news-batch.js')._internals.shouldAttemptVodConsensus(out,new Date('2026-10-13T13:00:00Z')),false,'specific published game must not be overridden by generic VOD consensus');
+  assert.strictEqual(require('../api/crew-news-batch.js')._internals.contradictsSelectedEvent(payload,{signature:'football:3:3:내전'}),true,'Roblox post must never become a football VOD title');
+  const withoutPartner=apply({...payload,results:[]});
+  assert.strictEqual(withoutPartner.selected.displayText,'자라섬 - 로블록스 합방 (10/13) 📌','game itself is still explicit even if detail cannot be verified');
+}
 console.log('semantic news and image policy regressions: ok');

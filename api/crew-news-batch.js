@@ -349,6 +349,17 @@ async function fetchVodDetailForConsensus(req,station,id) {
   }
 }
 
+// Two replays agreeing on a game does not prove that a selected post
+// describing a different game belongs to those replays.
+function contradictsSelectedEvent(payload,consensus) {
+  const text=outputPolicy.selectedEvidenceText(payload);
+  const signature=String(consensus&&consensus.signature||'');
+  const namedRoblox=/로(?:블|볼)록스/.test(text);
+  const namedFootball=/(?:피파|fc\s*온라인|엪온)/i.test(text);
+  if(namedRoblox&&signature.startsWith('football:')) return true;
+  if(namedFootball&&signature.startsWith('named:로블록스:')) return true;
+  return false;
+}
 async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date()) {
   if (!shouldAttemptVodConsensus(payload,now)) return payload;
   const crew=String(payload.strictCrew||'');
@@ -374,7 +385,7 @@ async function attachVodConsensusFallback(req,payload,requestUrl,now=new Date())
     if (consensus) break;
   }
 
-  if (!consensus) return payload;
+  if (!consensus || contradictsSelectedEvent(payload,consensus)) return payload;
 
   const displayDate=String(selected.displayDate||'').trim();
   const nextSelected={
@@ -668,6 +679,7 @@ module.exports._internals={
   consensusStationOrder,
   consensusImageStationOrder,
   shouldAttemptVodConsensus,
+  contradictsSelectedEvent,
   fetchVodListForConsensus,
   fetchVodDetailForConsensus,
   attachVodConsensusFallback,
