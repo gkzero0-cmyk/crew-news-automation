@@ -3,7 +3,7 @@
  *
  * 기존 Code.gs + ControlAuditV180.gs를 그대로 사용한다.
  * refreshCrewNewsV181()은 기존 v1.8 갱신을 먼저 실행한 뒤,
- * 크루 소식 셀의 크루명 색상만 검사하고 틀린 경우에만 복구한다.
+ * 크루 소식 셀의 색상·제목 본문·핀·원문 링크를 검사하고 손상된 경우에만 복구한다.
  */
 
 const CREW_STYLE_SELF_HEAL_V181 = Object.freeze({
@@ -53,9 +53,10 @@ function refreshCrewNewsV181() {
   }
 
   const crews = readCrewConfig_(configSheet);
+  const postUrls = crewPostUrlsFromStatusV181_(statusSheet);
   let repairedCount = 0;
   crews.forEach(function(crew) {
-    if (repairCrewNewsStyleV181_(main, crew)) repairedCount += 1;
+    if (repairCrewNewsStyleV181_(main, crew, postUrls[crew.crew] || '')) repairedCount += 1;
   });
 
   writeStyleSelfHealStatusV181_(statusSheet, repairedCount);
@@ -85,7 +86,47 @@ function crewPrefixColorMatchesV181_(range, crewName, expectedColor) {
   }
 }
 
-function repairCrewNewsStyleV181_(mainSheet, crew) {
+// The status sheet carries the authoritative selected-post URL (column G).
+// If a manual cell edit erased the rich link, inspecting the cell alone
+// cannot reconstruct it. Read only existing local status, not SOOP.
+function crewPostUrlsFromStatusV181_(statusSheet) {
+  const urls = Object.create(null);
+  if (!statusSheet) return urls;
+  const rows = statusSheet.getDataRange().getValues();
+  rows.forEach(function(row) {
+    const crew = String(row[0] || '').trim();
+    const url = String(row[6] || '').trim();
+    if (!crew || !/^https:\/\/www\.sooplive\.com\/station\/[a-zA-Z0-9_-]+\/post\/\d+$/.test(url)) return;
+    urls[crew] = url;
+  });
+  return urls;
+}
+
+function crewNewsRichStyleMatchesV181_(range, crewName, color, expectedUrl) {
+  try {
+    if (!crewPrefixColorMatchesV181_(range, crewName, color)) return false;
+    const rich = range.getRichTextValue();
+    const text = String(rich.getText() || '');
+    const prefix = String(crewName || '') + ' -';
+    const bodyStart = prefix.length;
+    if (text.length <= bodyStart) return false;
+    const bodyStyle = rich.getTextStyle(bodyStart, bodyStart + 1);
+    if (!bodyStyle ||
+        normalizeHexColorV181_(bodyStyle.getForegroundColor()) !== '#ffffff' ||
+        bodyStyle.isUnderline() !== false) return false;
+    const pinPos = text.lastIndexOf('📌');
+    if (pinPos >= 0) {
+      const pinStyle = rich.getTextStyle(pinPos, pinPos + 2);
+      if (!pinStyle ||
+          normalizeHexColorV181_(pinStyle.getForegroundColor()) !== '#ffffff' ||
+          pinStyle.isUnderline() !== false) return false;
+    }
+    if (expectedUrl && normalizeUrl_(rich.getLinkUrl()) !== normalizeUrl_(expectedUrl)) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
+function repairCrewNewsStyleV181_(mainSheet, crew, expectedUrl) {
   if (!mainSheet || !crew || !crew.newsCell || !crew.crew) return false;
   const range = mainSheet.getRange(crew.newsCell);
   const text = String(range.getDisplayValue() || '').trim();
@@ -94,9 +135,9 @@ function repairCrewNewsStyleV181_(mainSheet, crew) {
   const color = String(
     crew.color || (CREW_AUTOMATION.COLORS && CREW_AUTOMATION.COLORS[crew.crew]) || ''
   ).trim();
-  if (!color || crewPrefixColorMatchesV181_(range, crew.crew, color)) return false;
+  if (!color || crewNewsRichStyleMatchesV181_(range, crew.crew, color, expectedUrl)) return false;
 
-  writeCrewNewsCell_(range, crew.crew, color, text, getCurrentPostUrl_(range) || '');
+  writeCrewNewsCell_(range, crew.crew, color, text, expectedUrl || getCurrentPostUrl_(range) || '');
   return true;
 }
 
