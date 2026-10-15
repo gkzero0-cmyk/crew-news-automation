@@ -25,3 +25,19 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run tests
         run: npm test
+
+      - name: Diagnose public crew-menu CDN (non-blocking)
+        if: always()
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const u='https://crew-news-automation.vercel.app/api/crew-menu?station=zzamta0310';
+            for(let i=0;i<2;i++){
+              try{
+                const r=await fetch(u,{signal:AbortSignal.timeout(12000),redirect:'manual'});
+                const body=(await r.text()).slice(0,160).replace(/\s+/g,' ');
+                console.log('crew-menu-diagnostic',JSON.stringify({attempt:i+1,status:r.status,cache:r.headers.get('x-vercel-cache'),type:r.headers.get('content-type'),redirect:r.headers.get('location')?.slice(0,70)||'',body}));
+              }catch(e){console.log('crew-menu-diagnostic-error',i+1,String(e?.message||e));}
+            }
+          })();
+          NODE
