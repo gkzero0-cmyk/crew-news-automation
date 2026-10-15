@@ -412,4 +412,15 @@ for (const [crew, current, expected] of [
   const unconfirmed=apply({...p,results:[{posts:[{id:'209239633',contents:'ZZAM지트 PEAK 합방 숙봉 혼자 갑니다'}]}]});
   assert.equal(unconfirmed.selected.imageUrl,'');
 }
+// Independent schedule and member-broadcast evidence verifies 10/14 ZZAM지트 Trash Day.
+// Never carry this exact-post editorial correction into a different announcement.
+{
+  const p={ok:true,strictCrew:'ZZAM지트',selected:{id:'209792173',summary:'크루 합방',displaySummary:'크루 합방',displayDate:'10/14',activityDate:'2026-10-14',imageUrl:'',sheetImageUrl:''},results:[{posts:[{id:'209792173',originalTitle:'10/14 크루 합방',contents:'ZZAM지트 합방 공지'}]}]};
+  const out=apply(p);
+  assert.equal(out.selected.summary,'Trash Day 합방');
+  assert.equal(out.selected.displayText,'ZZAM지트 - Trash Day 합방 (10/14) 📌');
+  const unrelated=apply({...p,selected:{...p.selected,id:'209792174'},results:[{posts:[{id:'209792174',originalTitle:'크루 합방',contents:'다른 행사'}]}]});
+  assert.doesNotMatch(unrelated.selected.displayText,/Trash Day/);
+}
+
 console.log('output-policy regression tests passed');
