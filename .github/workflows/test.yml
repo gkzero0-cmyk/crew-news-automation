@@ -61,6 +61,13 @@ jobs:
                 imageUrl:String(v.imageUrl||'').slice(0,200),vodUrl:v.vodUrl
               }))}));
             }catch(e){console.log('CREW_JANG_VODS',String(e.message||e))}
+            try {
+              const url='https://crew-news-automation.vercel.app/api/crew-news-batch?crew='+encodeURIComponent('ZZAM지트')+'&stations=yeonwoonayng,sagesv,zzamta0310,lllucen,hamssotta&per_page=35';
+              const res=await fetch(url,{signal:AbortSignal.timeout(45000)});
+              const data=await res.json();
+              const selected=data.selected||{};
+              console.log('CREW_BATCH_SELECTED',JSON.stringify({http:res.status,crew:data.strictCrew,version:data.policyVersion,source:selected.id,summary:selected.summary,displaySummary:selected.displaySummary,displayText:selected.displayText,activityDate:selected.activityDate,imageUrl:selected.imageUrl,imageSource:selected.imageSource,imagePostId:selected.imagePostId,reason:selected.imageSelectionReason,rawCandidateCount:data.rawCandidateCount,results:(data.results||[]).map(p=>({station:p.station,count:p.count,rawCount:p.rawCount}))}));
+            }catch(e){console.log('CREW_BATCH_SELECTED',JSON.stringify({error:String(e.message||e)}));}
             const watch=[
               ['jo','yjkim5500','2026-10-15'],['jo2','muse0116','2026-10-15'],
               ['jin','ttobeherored','2026-10-13'],['jin2','jangjh5409','2026-10-13'],
