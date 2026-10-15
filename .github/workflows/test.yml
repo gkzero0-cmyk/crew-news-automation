@@ -33,9 +33,7 @@ jobs:
           (async()=>{
             const sharp=require('sharp');
             const names=[
-              ['gang','https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=20261001_A6097DF4_297513345_2_r'],
-              ['jang','https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=20261004_1279B109_297581563_1_r&column=2&t=1791104356'],
-              ['jara','https://stimg.sooplive.com/NORMAL_BBS/7/26725487/32271791880950927.png']
+              ['zzam_candidate','https://stimg.sooplive.com/NORMAL_BBS/8/25819298/35631791973160029.jpeg']
             ];
             for(const [key,image] of names){
               const u='https://crew-news-automation.vercel.app/api/image?url='+encodeURIComponent(image)+'&fit=sheet';
@@ -53,6 +51,16 @@ jobs:
                 for(let i=0;i<b64.length;i+=2500)console.log('CREW_IMAGE_CHUNK',key,Math.floor(i/2500),b64.slice(i,i+2500));
               }catch(e){console.log('CREW_IMAGE_META',JSON.stringify({key,error:String(e.message||e)}))}
             }
+            try {
+              const u='https://crew-news-automation.vercel.app/api/crew-news?station=iamquaddurup&mode=vods&per_page=60';
+              const rr=await fetch(u,{signal:AbortSignal.timeout(14000)});
+              const data=await rr.json();
+              const vods=(data.vods||[]).filter(v=>String(v.publishedAt||'').slice(0,10)>='2026-10-03'&&String(v.publishedAt||'').slice(0,10)<='2026-10-06').slice(0,25);
+              console.log('CREW_JANG_VODS',JSON.stringify({http:rr.status,vods:vods.map(v=>({
+                id:v.id,title:v.title,publishedAt:v.publishedAt,
+                imageUrl:String(v.imageUrl||'').slice(0,200),vodUrl:v.vodUrl
+              }))}));
+            }catch(e){console.log('CREW_JANG_VODS',String(e.message||e))}
             const watch=[
               ['jo','yjkim5500','2026-10-15'],['jo2','muse0116','2026-10-15'],
               ['jin','ttobeherored','2026-10-13'],['jin2','jangjh5409','2026-10-13'],
