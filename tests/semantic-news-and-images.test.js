@@ -195,9 +195,18 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
     id:'208932989',summary:'나들이',displaySummary:'나들이',activityDate:'2026-10-05',
     imageUrl:url,sheetImageUrl:url,imageSource:'leader_vod_editorial'
   }});
-  assert.strictEqual(actual.selected.imageUrl,'','visually unrelated VOD frame removed');
-  assert.strictEqual(actual.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
-  assert.match(actual.selected.imageSelectionReason,/다른 회차/);
+  assert.strictEqual(actual.selected.imageUrl,url,
+    'user-confirmed Jangjisu outing VOD thumbnail must be retained');
+  assert.strictEqual(actual.selected.sheetImageUrl,url,
+    'confirmed image remains eligible for Sheets');
+  assert.notEqual(actual.selected.imageRejected,true,
+    'do not mark the confirmed outing image as rejected');
+  const meeting=apply({ok:true,strictCrew:'진드기',selected:{
+    id:'meeting',summary:'점호',displaySummary:'점호',activityDate:'2026-10-13',
+    imageUrl:url,sheetImageUrl:url,imageSource:'member_vod'
+  }});
+  assert.strictEqual(meeting.selected.imageUrl,'',
+    'unverified meeting VOD thumbnails remain excluded');
 }
 
 console.log('semantic news and image policy regressions: ok');
