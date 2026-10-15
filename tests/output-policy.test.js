@@ -512,4 +512,37 @@ assert.equal(policy.cleanGenericEventHeadline('내일 VRC콘텐츠'),'VRC 콘텐
   assert.doesNotMatch(out.selected.displayText,/VR 합방/);
 }
 
+
+// Real October 15 Jojeokdan Mystery: independent member notices say
+// they are watching Hwayang's Mystery together. Neither participation in
+// the show nor its production by Jojeokdan is established by those posts.
+{
+  const p={
+    ok:true,strictCrew:'조적단',
+    selected:{
+      id:'209855777',summary:'미스테리',displaySummary:'미스테리',
+      activityDate:'2026-10-15',imageUrl:'',sheetImageUrl:'',
+      postUrl:'https://www.sooplive.com/station/yjkim5500/post/209855777'
+    },
+    results:[{posts:[{
+      id:'209855777',originalTitle:'조적단 미스테리',
+      contents:'오늘 저녁 조적단 미스테리 있습니다'
+    }]}]
+  };
+  const result=apply(p);
+  assert.equal(result.selected.summary,'화양 미스테리 함께 보기');
+  assert.equal(result.selected.displayText,'조적단 - 화양 미스테리 함께 보기 (10/15) 📌');
+  assert.equal(result.selected.id,'209855777','preserve the official source notice');
+  assert.equal(result.selected.imageUrl,'','do not invent promotional media');
+  const unrelatedPost=apply({...p,selected:{...p.selected,id:'other'}});
+  assert.equal(unrelatedPost.selected.displayText,'조적단 - 미스테리 (10/15) 📌',
+    'the same crew cannot borrow another post editorial correction');
+  const unrelatedCrew=apply({...p,strictCrew:'강씨세가'});
+  assert.doesNotMatch(unrelatedCrew.selected.displayText,/함께 보기/,
+    'Hwayang Mystery interpretation cannot overwrite another crew');
+  const unrelatedDate=apply({...p,selected:{...p.selected,activityDate:'2026-10-16'}});
+  assert.doesNotMatch(unrelatedDate.selected.displayText,/함께 보기/,
+    'verified note is bound to the October 15 activity');
+}
+
 console.log('output-policy regression tests passed');
