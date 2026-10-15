@@ -531,9 +531,11 @@ async function fetchMenu(station,headers,metrics=null,options={}) {
     return inFlight;
   }
   const request=(async()=>{
+    // VERCEL_ENV is optional when automatic system environment exposure is
+    // disabled. Use an explicit production-only project flag instead.
+    // Never send authenticated SOOP menu requests to the shared CDN.
     const useEdge=options.direct!==true &&
-      process.env.VERCEL_ENV==='production' &&
-      process.env.CREW_MENU_EDGE_CACHE!=='off' &&
+      process.env.CREW_MENU_EDGE_CACHE==='on' &&
       !(headers&&headers.Cookie);
     if(useEdge) {
       try {

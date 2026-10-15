@@ -13,8 +13,9 @@ const response=(body,cache='MISS')=>({
 const edge={ok:true,board:[{bbsNo:'1',name:'공지사항'}],source:'https://api-channel.sooplive.com/menu',upstreamRequestCount:1};
 (async()=>{
   try {
-    process.env.VERCEL_ENV='production';
-    delete process.env.CREW_MENU_EDGE_CACHE;
+    // Prove CDN activation does not depend on exposed Vercel system vars.
+    delete process.env.VERCEL_ENV;
+    process.env.CREW_MENU_EDGE_CACHE='on';
     menu.clearMenuCacheForTest();
     let urls=[];
     global.fetch=async url=>{urls.push(String(url));return response(edge,'HIT');};
@@ -51,6 +52,16 @@ const edge={ok:true,board:[{bbsNo:'1',name:'공지사항'}],source:'https://api-
     await menu.fetchMenu('authstation',{Cookie:'session=secret'},menu.createSoopRequestMetrics());
     assert.equal(urls.length,1);
     assert.match(urls[0],/api-channel\.sooplive\.com/,'auth must bypass shared CDN');
+
+    // A local or staging run without the explicit feature flag stays direct.
+    menu.clearMenuCacheForTest();
+    delete process.env.CREW_MENU_EDGE_CACHE;
+    urls=[];
+    global.fetch=async url=>{urls.push(String(url));return response({board:[{bbsNo:'5',name:'공지'}]});};
+    await menu.fetchMenu('flagoff',{},menu.createSoopRequestMetrics());
+    assert.equal(urls.length,1);
+    assert.match(urls[0],/api-channel\.sooplive\.com/,'absent flag must not call production CDN');
+    process.env.CREW_MENU_EDGE_CACHE='on';
 
     menu.clearMenuCacheForTest();
     global.fetch=async()=>response({board:[{bbsNo:'11',name:'스케줄 게시판'}]});
