@@ -104,4 +104,29 @@ assert.deepStrictEqual(
   'PEAK proper name must outrank generic collaboration'
 );
 
+
+// Date-centered event ordering: today > nearest future > recent past.
+// The same post can represent a different priority after KST midnight.
+const eventToday=[
+  {id:'vr15',station:'doormomo',authorId:'doormomo',title:'곧 뱅온!',
+   publishedAt:'2026-10-15 17:18:38',boardName:'방송 공지',
+   contents:'6시 천타버스 vr 합방 있습니다!'},
+  {id:'counseling17',station:'kappuchan',authorId:'kappuchan',
+   title:'10월 17일 5시 빙밍이의 천타버스 상담 컨텐츠!',
+   publishedAt:'2026-10-12 18:47:57',boardName:'카푸 공지',
+   contents:'2026년 10월 17일 오후 5시 천타버스 상담사들이 찾아옵니다!'}
+];
+const on15=enrichment.synthesizeCrewEvent(eventToday,'천타버스','243000','2026-10-15');
+const on16=enrichment.synthesizeCrewEvent(eventToday,'천타버스','243000','2026-10-16');
+assert.strictEqual(on15?.activityDate,'2026-10-15','same-day crew VR event must win');
+assert.strictEqual(on16?.activityDate,'2026-10-17','next upcoming event wins after midnight');
+assert.strictEqual(enrichment.shouldReplaceCore(
+  {activityDate:'2026-10-15',summary:'합방'},
+  {activityDate:'2026-10-17',specificity:90},'2026-10-15'),false,
+  'a future schedule must not displace todays valid event');
+assert.strictEqual(enrichment.shouldReplaceCore(
+  {activityDate:'2026-10-15',summary:'합방'},
+  {activityDate:'2026-10-17',specificity:90},'2026-10-16'),true,
+  'upcoming activity replaces a concluded prior-day event');
+
 console.log('event-enrichment tests passed');

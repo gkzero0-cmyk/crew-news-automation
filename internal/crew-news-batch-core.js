@@ -3,6 +3,7 @@
 const crewNewsHandler=require('./crew-news.js');
 const crewNewsInternals=crewNewsHandler._internals || {};
 const {POLICY_VERSION}=require('../lib/version.js');
+const {kstToday,compareActivityDays}=require('../lib/event-date-priority.js');
 
 const CREW_BY_LEADER = Object.freeze({
   yjkim5500: '조적단',
@@ -249,13 +250,15 @@ function sameRepresentativeActivity(a, b) {
   return false;
 }
 
-function compareRepresentativeCandidates(a, b) {
+function compareRepresentativeCandidates(a, b, today=kstToday()) {
   const sameActivity = sameRepresentativeActivity(a, b);
 
   // Different crew activities are ordered by freshness first. A leader post
   // is only a representative-quality advantage, not permission to pin an
   // older event above a newer confirmed activity from another member.
   if (!sameActivity) {
+    const dateOrder=compareActivityDays(a.activityDate,b.activityDate,today);
+    if(dateOrder) return dateOrder;
     const time =
       parseTime(b.sourcePublishedAt || b.publishedAt) -
       parseTime(a.sourcePublishedAt || a.publishedAt);

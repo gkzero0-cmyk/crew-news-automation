@@ -127,4 +127,24 @@ const genericMeeting={representativeTier:2,isCrewLeader:false,strictActivity:'�
 assert(compareRepresentativeCandidates(specificMeeting,genericMeeting)<0,'정기회의 should outrank generic same-day meeting');
 assert(compareRepresentativeCandidates(genericMeeting,specificMeeting)>0,'newer generic meeting must not replace 정기회의');
 
+
+// On Oct 15 the day's VR collaboration outranks an Oct 17 announcement even
+// though the future event is a more detailed program. After midnight on
+// Oct 16 the nearest future event becomes the representative.
+const vrToday={
+  id:'209872185',strictCrew:'천타버스',strictActivity:'합방',activityDate:'2026-10-15',
+  sourcePublishedAt:'2026-10-15 17:18:38',representativeTier:2,isCrewLeader:false
+};
+const counselingFuture={
+  id:'209616935',strictCrew:'천타버스',strictActivity:'콘텐츠',activityDate:'2026-10-17',
+  sourcePublishedAt:'2026-10-12 18:47:57',representativeTier:2,isCrewLeader:false
+};
+assert(compareRepresentativeCandidates(vrToday,counselingFuture,'2026-10-15')<0,
+  'today VR event must outrank future counseling on Oct 15');
+assert(compareRepresentativeCandidates(counselingFuture,vrToday,'2026-10-16')<0,
+  'the nearest future event wins when no event is scheduled today');
+const farFuture={...counselingFuture,id:'later',activityDate:'2026-10-30',sourcePublishedAt:'2026-10-15 19:00:00'};
+assert(compareRepresentativeCandidates(counselingFuture,farFuture,'2026-10-16')<0,
+  'closest future schedule must outrank a distant newly posted event');
+
 console.log('representative-selection regression: ok');
