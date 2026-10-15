@@ -161,4 +161,31 @@ assert(vodMatchScore({...peakPost,strictCrew:'다른크루'},peakVod)<24,'other 
   assert.equal(choosePostImageCandidate(vr,[vr,vrc]),null,'VR and VRC are not the same event');
 }
 
+
+// Same-day group VOD from a DIFFERENT event is not a valid image source.
+// Distinct matching event titles remain eligible, including empty-slot recovery.
+{
+  const selected={id:'notice',strictCrew:'ZZAM지트',strictActivity:'합방',
+    displaySummary:'ZZAM지트 합방',activityDate:'2026-10-15',
+    title:'오늘의 방송 공지',contents:'ZZAM지트 Trash Day 합방 오후 8시'};
+  const wrong={id:'wrong-vod',title:'[ZZAM지트] PEAK 합방 단체 게임',
+    publishedAt:'2026-10-15 23:00:00',
+    imageUrl:'https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=bad'};
+  const right={...wrong,id:'right-vod',title:'[ZZAM지트] Trash Day 합방 단체 게임'};
+  assert.equal(vodMatchScore(selected,wrong),-1,
+    'the crew and date cannot override a contradictory named game');
+  assert.ok(vodMatchScore(selected,right)>=10,
+    'the named same-event VOD can be an image candidate');
+  const generic={...selected,contents:'ZZAM지트 크루 합방 예정'};
+  const unrelated={...wrong,title:'[ZZAM지트] 크루 합방 단체 게임'};
+  assert.equal(vodMatchScore(generic,unrelated),-1,
+    'generic same-day crew group VOD is not proof of the selected event');
+  const mystery={...selected,strictCrew:'강씨세가',strictActivity:'미스테리',
+    displaySummary:'강씨세가 미스테리',contents:'강씨세가 미스테리'};
+  assert.equal(vodMatchScore(mystery,{...wrong,title:'강씨세가 VR 합방 단체 콘텐츠'}),-1,
+    'same-day crew group hit cannot override another concrete activity');
+  assert.ok(vodMatchScore(mystery,{...wrong,title:'강씨세가 미스테리 합방'})>=10,
+    'matching concrete crew activity remains eligible');
+}
+
 console.log('continuous event media policy: ok');

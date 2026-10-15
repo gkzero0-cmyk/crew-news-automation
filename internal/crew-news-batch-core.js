@@ -886,6 +886,13 @@ function vodMatchScore(post, vod) {
     VERIFIED_VOD_MEDIA_PRIORITY[post.strictCrew][String(vod.id||'')] || 0
   ) > 0;
   if (activityFamily(activity) === 'travel' && !verifiedTravelMedia) return -1;
+  // An unrelated VOD from the same day can share only '크루/합방' wording.
+  // A collab needs a concrete shared program signal or explicit verification.
+  const vodEventMatched=sameEventImageEvidence(post,{
+    ...vod,originalTitle:vod.title||vod.originalTitle||''
+  });
+  if (activityFamily(activity)==='collab' && !vodEventMatched &&
+      !verifiedTravelMedia)return -1;
 
   const postContext = String(
     (post.title || '') + ' ' + (post.contents || '') + ' ' + activity
@@ -893,6 +900,7 @@ function vodMatchScore(post, vod) {
   const sameDayCrewGroupHit = days === 0 && crewHit &&
     /단체|크루/.test(postContext) && /단체|크루/.test(title) &&
     /모임|합방|행사|특집|콘텐츠|컨텐츠|러닝|달리기/.test(title);
+  if(sameDayCrewGroupHit&&!vodEventMatched&&!verifiedTravelMedia)return -1;
 
   // 날짜만 같은 VOD는 금지. 활동 핵심어가 직접 맞거나,
   // 같은 날 크루명이 명시된 '단체/크루 활동' VOD처럼 대표 게시글과 맥락이 함께 맞아야 한다.
