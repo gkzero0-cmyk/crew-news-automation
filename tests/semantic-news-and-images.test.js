@@ -136,4 +136,32 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
   assert.ok(enrichment.descriptorForPost({...completedWithNewNotice,station:'ioocom',authorId:'ioocom'},'자라섬','dstv'),
     'a separately announced future event should remain eligible despite a personal recap');
 }
+
+// Real SOOP image discovered after the sheet slot was empty. Its source URI
+// must be converted into a displayable Sheets proxy without changing its
+// original evidence or promoting an unrelated member's thumbnail.
+{
+  const realImage='https://stimg.sooplive.com/NORMAL_BBS/1/123/confirmed_event.png';
+  const base={ok:true,strictCrew:'조적단',selected:{
+    id:'selected-event',summary:'미스테리',displaySummary:'미스테리',
+    activityDate:'2026-10-15',imageUrl:realImage,sheetImageUrl:'',
+    imageSource:'post_self'
+  },results:[{posts:[{id:'selected-event',originalTitle:'조적단 미스테리',imageUrl:realImage,contents:'오늘 조적단 미스테리 진행'}]}]};
+  const out=apply(base);
+  const expected='https://crew-news-automation.vercel.app/api/image?url='+encodeURIComponent(realImage)+'&fit=sheet';
+  assert.strictEqual(out.selected.imageUrl,realImage);
+  assert.strictEqual(out.selected.sheetImageUrl,expected,'a real image must not remain invisible in an empty Sheets cell');
+  const final=policy.applyFinalImageSafety(
+    {...base,selected:{...base.selected}}, {stableFingerprint:fingerprint}
+  );
+  assert.strictEqual(final.selected.sheetImageUrl,expected,'post-consensus finalization also repairs missing sheet URLs');
+  const unsafe=apply({...base,selected:{...base.selected,
+    imageUrl:'https://untrusted.example/remote.png'}});
+  assert.strictEqual(unsafe.selected.sheetImageUrl,'',
+    'do not proxy an unapproved image origin');
+  const noImage=apply({...base,selected:{...base.selected,imageUrl:'',sheetImageUrl:'',imageSource:'none'}});
+  assert.strictEqual(noImage.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL,
+    'no matching real image must issue a proper clear instruction');
+}
+
 console.log('semantic news and image policy regressions: ok');

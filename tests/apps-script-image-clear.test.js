@@ -82,4 +82,40 @@ const result = ctx.refreshOneCrew_(mainSheet, crew, payload, {fallbackRequests:0
 assert.equal(imageRange.formula, '', 'blank-image clear directives must leave the image cell truly empty');
 assert.ok(imageRange.cleared > 0, 'the existing IMAGE formula must be removed');
 assert.match(result.imageState, /비움|삭제|이미지 없음/, 'status should describe an empty image cell rather than a retained placeholder');
+
+// End-to-end GAS image slot regression: blank -> confirmed image -> upgraded
+// image -> cleared image, without forcing any other news-post change.
+// An unchanged server fingerprint must still allow local image self-healing.
+{
+  const slot=makeRange('',4,3);
+  const sheet={getRange:a1=>a1==='B4'?newsRange:slot,getImages:()=>[]};
+  const image1='https://stimg.sooplive.com/NORMAL_BBS/1/123/event.png';
+  const image2='https://stimg.sooplive.com/NORMAL_BBS/1/123/better.png';
+  const url1='https://crew-news-automation.vercel.app/api/image?url='+encodeURIComponent(image1)+'&fit=sheet';
+  const url2='https://crew-news-automation.vercel.app/api/image?url='+encodeURIComponent(image2)+'&fit=sheet';
+  const withImage=url=>({...payload,
+    selectedFingerprint:'same-event-image',shouldWrite:false,unchanged:true,
+    updateAction:'skip_unchanged',
+    selected:{...payload.selected,imageUrl:url===url1?image1:image2,
+      sheetImageUrl:url,imageSource:'post_self'}});
+  const first=ctx.refreshOneCrew_(sheet,crew,withImage(url1),{});
+  assert.ok(slot.formula.includes(url1),'first eligible image fills previously empty slot');
+  assert.equal(first.imageState,'갱신');
+  const writes=slot.cleared;
+  const same=ctx.refreshOneCrew_(sheet,crew,withImage(url1),{});
+  assert.equal(slot.cleared,writes,'unchanged image must not trigger a Sheets write');
+  assert.equal(same.changed,false);
+  const upgrade=ctx.refreshOneCrew_(sheet,crew,withImage(url2),{});
+  assert.ok(slot.formula.includes(url2),'new better image replaces outdated image for same event');
+  assert.ok(!slot.formula.includes(url1));
+  assert.equal(upgrade.imageState,'갱신');
+  const degraded=ctx.refreshOneCrew_(sheet,crew,{...withImage(url1),
+    preservePrevious:true,complete:false}, {});
+  assert.ok(slot.formula.includes(url2),'degraded source must preserve last known good image');
+  assert.equal(degraded.changed,false);
+  const cleared=ctx.refreshOneCrew_(sheet,crew,payload,{});
+  assert.equal(slot.formula,'','blank directive clears image with no qualifying source');
+  assert.match(cleared.imageState,/삭제/);
+}
+
 console.log('Apps Script image clear regression: ok');
