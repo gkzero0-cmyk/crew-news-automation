@@ -129,4 +129,25 @@ assert.strictEqual(enrichment.shouldReplaceCore(
   {activityDate:'2026-10-17',specificity:90},'2026-10-16'),true,
   'upcoming activity replaces a concluded prior-day event');
 
+
+// The secondary image candidate must prove the selected event, not merely
+// share a date and the generic collaboration family.
+{
+  const base=[
+    {id:'s',station:'leader',authorId:'leader',
+     title:'10/15 ZZAM지트 PEAK 합방',publishedAt:'2026-10-15 16:00:00',
+     boardName:'공지사항',contents:'ZZAM지트 PEAK 합방',imageUrl:''},
+    {id:'x',station:'member',authorId:'member',
+     title:'ZZAM지트 Trash Day 합방',publishedAt:'2026-10-15 17:00:00',
+     boardName:'공지사항',contents:'ZZAM지트 Trash Day 합방',
+     imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/trash.png'}
+  ];
+  const event=enrichment.synthesizeCrewEvent(base,'ZZAM지트','leader','2026-10-15');
+  if(event&&/peak/i.test(event.originalTitle)){
+    const out=enrichment.attachBestImage(event,base,[],'leader');
+    assert.notEqual(out.imageUrl,'https://stimg.sooplive.com/NORMAL_BBS/1/trash.png',
+      'same-day different-game post is not an image fallback');
+  }
+}
+
 console.log('event-enrichment tests passed');

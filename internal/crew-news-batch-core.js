@@ -3,6 +3,7 @@
 const crewNewsHandler=require('./crew-news.js');
 const crewNewsInternals=crewNewsHandler._internals || {};
 const {POLICY_VERSION}=require('../lib/version.js');
+const {sameEventImageEvidence}=require('../lib/event-media-evidence.js');
 const {kstToday,compareActivityDays}=require('../lib/event-date-priority.js');
 
 const CREW_BY_LEADER = Object.freeze({
@@ -756,6 +757,10 @@ function sameNewsScore(selected, candidate) {
   score+=Math.min(12,hits.length*4);
 
   if (String(selected.id||'')===String(candidate.id||'')) score+=8;
+  // Family-only ('합방'/'회의') or same-day matches can refer to entirely
+  // different events. Require independent, specific source corroboration.
+  if(String(selected.id||'')!==String(candidate.id||'') &&
+      !sameEventImageEvidence(selected,candidate))return -1;
   return score>=14 ? score : -1;
 }
 
@@ -773,7 +778,10 @@ function unsuitablePostImageContext(post) {
   // Clearly personal/reward/media-only contexts are poor representative images
   // unless the same text still names a recognized crew activity.
   const weakMedia=/셀카|개인\s*사진|사진\s*자랑|짤|팬아트|방셀|굿즈|당첨|배송|상품|경품|후원\s*감사|조회수\s*달성/i.test(text);
-  if (weakMedia && !family) return true;
+  // A crew mention in a personal photo/reward notice does not make its image
+  // an event poster. Explicit group/poster evidence is allowed.
+  const explicitCrewPoster=/(?:크루|단체|합방|행사)\s*(?:공식\s*)?(?:포스터|단체\s*사진|기념\s*사진)|(?:공식\s*)?행사\s*포스터/i.test(text);
+  if (weakMedia && !explicitCrewPoster && post.imageVisualVerified!==true) return true;
   return false;
 }
 

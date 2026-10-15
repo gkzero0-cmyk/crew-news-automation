@@ -118,4 +118,47 @@ assert(vodMatchScore(peakPost,peakVod)>=24,'confirmed overnight event must be el
 assert.equal(vodMatchScore({...peakPost,contents:'ZZAM지트 PEAK 합방'},peakVod),-1,'missing corroborated participants must prevent forced image matching');
 assert.equal(vodMatchScore(peakPost,{...peakVod,id:'some-other-video'}),-1,'unknown video must not inherit the verified event image exception');
 assert(vodMatchScore({...peakPost,strictCrew:'다른크루'},peakVod)<24,'other crews must not inherit the high-confidence ZZAM media exception');
+
+// Image matching regression: same crew and date must not mix independently
+// named programs (nor treat personal photos as a crew poster).
+{
+  const selected={id:'c1',strictCrew:'ZZAM지트',strictActivity:'합방',
+    displaySummary:'ZZAM지트 합방',activityDate:'2026-10-15',
+    originalTitle:'오늘 방송 공지',contents:'8시에 ZZAM지트 PEAK 합방입니다'};
+  const wrong={id:'c2',strictCrew:'ZZAM지트',strictActivity:'합방',
+    displaySummary:'ZZAM지트 합방',activityDate:'2026-10-15',
+    originalTitle:'Trash Day 합방 공지',contents:'8시에 ZZAM지트 Trash Day 합방입니다',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/wrong.png'};
+  assert.equal(choosePostImageCandidate(selected,[selected,wrong]),null,
+    'a different named game must not supply a same-day thumbnail');
+  const good={...wrong,id:'c3',originalTitle:'PEAK 합방 공지',contents:'ZZAM지트 PEAK 합방',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/peak.png'};
+  assert.equal(choosePostImageCandidate(selected,[selected,wrong,good]).imagePostId,'c3',
+    'specific same-event post supplies a previously missing image');
+  const portrait={...good,id:'c4',originalTitle:'오늘 개인 사진',contents:'셀카 올려요. ZZAM지트 PEAK 합방도 기대!',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/selfie.png'};
+  assert.equal(choosePostImageCandidate(selected,[selected,portrait]),null,
+    'an unrelated selfie with a crew event mentioned cannot become its poster');
+  const sourcePoster={...portrait,id:'c5',
+    originalTitle:'ZZAM지트 PEAK 합방 공식 포스터',contents:'합방 공식 포스터',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/official.png'};
+  assert.equal(choosePostImageCandidate(selected,[selected,sourcePoster]).imagePostId,'c5',
+    'credible official poster remains eligible');
+  const generic={id:'g1',strictCrew:'천타버스',strictActivity:'합방',
+    displaySummary:'천타버스 합방',activityDate:'2026-10-15',
+    contents:'오늘 천타버스 합방이 있습니다'};
+  const genericOther={...generic,id:'g2',contents:'오늘 천타버스 다른 합방',
+    imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/other.png'};
+  assert.equal(choosePostImageCandidate(generic,[generic,genericOther]),null,
+    'unidentified same-day generic collabs must not share a thumbnail');
+  const genericLinked={...genericOther,contents:'오늘 천타버스 합방 https://www.sooplive.com/station/test/post/123456789'};
+  const linkTarget={...generic,id:'123456789'};
+  assert.equal(choosePostImageCandidate(linkTarget,[linkTarget,genericLinked]).imagePostId,'g2',
+    'an explicit link to the exact source restores missing images safely');
+  const vr={...generic,id:'vr1',displaySummary:'천타버스 VR 합방',contents:'천타버스 VR 합방'};
+  const vrc={...genericOther,id:'vrc1',displaySummary:'천타버스 VRC 합방',
+    contents:'천타버스 VRC 합방'};
+  assert.equal(choosePostImageCandidate(vr,[vr,vrc]),null,'VR and VRC are not the same event');
+}
+
 console.log('continuous event media policy: ok');
