@@ -478,47 +478,92 @@ function shouldFetchMenuForRows(rows, crew = '') {
   });
 }
 
-async function fetchMenu(station, headers, metrics = null) {
-  const key = menuCacheKey(station, headers);
-  const cached = menuCache.get(key);
-  if (cached && Date.now() - cached.at < MENU_CACHE_TTL_MS) {
-    bumpSoopMetric(metrics, 'menuCacheHits', 1);
+const MENU_EDGE_ENDPOINT='https://crew-news-automation.vercel.app/api/crew-menu';
+
+function hydrateMenu(rows,source='') {
+  const byNo=new Map();
+  for (const row of rows) {
+    const no=String(first(row,['bbsNo','bbs_no','boardNo','board_no'])||'');
+    const name=safeText(first(row,['name','title','boardName','board_name']),120);
+    if(no&&name)byNo.set(no,name);
+  }
+  return {rows,byNo,source};
+}
+
+async function readMenuFromEdge(station,metrics) {
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),5000);
+  try {
+    const response=await fetch(MENU_EDGE_ENDPOINT+'?station='+encodeURIComponent(station),{
+      method:'GET',signal:controller.signal,redirect:'follow',
+      headers:{Accept:'application/json'}
+    });
+    if(!response.ok)throw new Error('menu_edge_'+response.status);
+    const data=await response.json();
+    if(!data||data.ok!==true||!Array.isArray(data.board))throw new Error('invalid_menu_edge_response');
+    const state=String(response.headers?.get?.('x-vercel-cache')||'').toUpperCase();
+    if(state==='HIT'||state==='STALE') {
+      bumpSoopMetric(metrics,'menuCacheHits',1);
+    } else {
+      // An edge miss still results in SOOP traffic. Include it in the metrics.
+      const upstream=Math.max(1,Math.min(3,Number(data.upstreamRequestCount)||1));
+      bumpSoopMetric(metrics,'menuCacheMisses',1);
+      bumpSoopMetric(metrics,'menuRequests',upstream);
+      bumpSoopMetric(metrics,'totalRequests',upstream);
+    }
+    return hydrateMenu(data.board,String(data.source||''));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchMenu(station,headers,metrics=null,options={}) {
+  const key=menuCacheKey(station,headers);
+  const cached=menuCache.get(key);
+  if(cached&&Date.now()-cached.at<MENU_CACHE_TTL_MS){
+    bumpSoopMetric(metrics,'menuCacheHits',1);
     return cached.value;
   }
-  if (cached) menuCache.delete(key);
-  const pending = menuInFlight.get(key);
-  if (pending) {
-    bumpSoopMetric(metrics, 'menuCacheHits', 1);
-    return pending;
+  if(cached)menuCache.delete(key);
+  const inFlight=menuInFlight.get(key);
+  if(inFlight){
+    bumpSoopMetric(metrics,'menuCacheHits',1);
+    return inFlight;
   }
-  bumpSoopMetric(metrics, 'menuCacheMisses', 1);
-
-  const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
-  const pendingRequest = (async () => {
-  try {
-    const result = await firstJson(urls, headers, metrics, 'menuRequests');
-    if (!result.data || !Array.isArray(result.data.board)) throw schemaError('menu','missing_board_array');
-    const rows = result.data.board;
-    const byNo = new Map();
-    for (const row of rows) {
-      const no = String(first(row, ['bbsNo', 'bbs_no', 'boardNo', 'board_no']) || '');
-      const name = safeText(first(row, ['name', 'title', 'boardName', 'board_name']), 120);
-      if (no && name) byNo.set(no, name);
+  const request=(async()=>{
+    const useEdge=options.direct!==true &&
+      process.env.VERCEL_ENV==='production' &&
+      process.env.CREW_MENU_EDGE_CACHE!=='off' &&
+      !(headers&&headers.Cookie);
+    if(useEdge) {
+      try {
+        const value=await readMenuFromEdge(station,metrics);
+        menuCache.set(key,{at:Date.now(),value});
+        return value;
+      } catch (_) {
+        // A cache failure never prevents the original direct SOOP lookup.
+      }
     }
-    const value = { rows, byNo, source: result.url };
-    menuCache.set(key, { at: Date.now(), value });
-    if (menuCache.size > 120) {
-      const oldest = [...menuCache.entries()].sort((a,b) => a[1].at - b[1].at)[0];
-      if (oldest) menuCache.delete(oldest[0]);
+    bumpSoopMetric(metrics,'menuCacheMisses',1);
+    const urls=SOOP_MENU_HOSTS.map(host=>host+'/v1.1/channel/'+encodeURIComponent(station)+'/menu');
+    try {
+      const result=await firstJson(urls,headers,metrics,'menuRequests');
+      if(!result.data||!Array.isArray(result.data.board))throw schemaError('menu','missing_board_array');
+      const value=hydrateMenu(result.data.board,result.url);
+      menuCache.set(key,{at:Date.now(),value});
+      return value;
+    } catch(error) {
+      return {rows:[],byNo:new Map(),source:'',error:String(error&&error.message||error)};
+    } finally {
+      if(menuCache.size>120){
+        const oldest=[...menuCache.entries()].sort((a,b)=>a[1].at-b[1].at)[0];
+        if(oldest)menuCache.delete(oldest[0]);
+      }
     }
-    return value;
-  } catch (error) {
-    return { rows: [], byNo: new Map(), source: '', error: String(error && error.message || error) };
-  }
   })();
-  menuInFlight.set(key, pendingRequest);
-  try { return await pendingRequest; }
-  finally { if (menuInFlight.get(key) === pendingRequest) menuInFlight.delete(key); }
+  menuInFlight.set(key,request);
+  try {return await request;}
+  finally {if(menuInFlight.get(key)===request)menuInFlight.delete(key);}
 }
 
 function normalizeVod(row, station, req) {
