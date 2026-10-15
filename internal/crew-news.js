@@ -452,8 +452,10 @@ function menuCacheKey(station, headers = {}) {
   return String(station) + '|' + (headers && headers.Cookie ? 'auth' : 'public');
 }
 
+const menuInFlight = new Map();
 function clearMenuCacheForTest() {
   menuCache.clear();
+  menuInFlight.clear();
 }
 
 const MENU_LAZY_ACTIVITY_RE = /합방|회의|점호|여행|엠티|\bMT\b|모임|회식|대회|대결|대항전|매치|\bvs\.?\b|모집|면접|영입|합격|가입|탈퇴|창단|행사|콘텐츠|컨텐츠|러닝|달리기|윷놀이|사냥|특집|일정/i;
@@ -467,7 +469,12 @@ function shouldFetchMenuForRows(rows, crew = '') {
     const body = cleanBody(first(row, ['contents','content','body']), 12000);
     const text = title + '\n' + body;
     const compact = text.replace(/\s+/g, '').toLowerCase();
-    return compact.includes(crewToken) || MENU_LAZY_ACTIVITY_RE.test(text);
+    if (!(compact.includes(crewToken) || MENU_LAZY_ACTIVITY_RE.test(text))) return false;
+    // A source post with an inline board name needs no separate menu lookup.
+    // Without a board number the menu cannot resolve the board label, either.
+    const label = first(row, ['bbs_name','board_name','boardName','menu_name','menuName']);
+    const boardNo = first(row, ['bbs_no','bbsNo','board_no','boardNo']);
+    return Boolean(boardNo) && !String(label || '').trim();
   });
 }
 
@@ -479,9 +486,15 @@ async function fetchMenu(station, headers, metrics = null) {
     return cached.value;
   }
   if (cached) menuCache.delete(key);
+  const pending = menuInFlight.get(key);
+  if (pending) {
+    bumpSoopMetric(metrics, 'menuCacheHits', 1);
+    return pending;
+  }
   bumpSoopMetric(metrics, 'menuCacheMisses', 1);
 
   const urls = SOOP_MENU_HOSTS.map(host => `${host}/v1.1/channel/${encodeURIComponent(station)}/menu`);
+  const pendingRequest = (async () => {
   try {
     const result = await firstJson(urls, headers, metrics, 'menuRequests');
     if (!result.data || !Array.isArray(result.data.board)) throw schemaError('menu','missing_board_array');
@@ -502,6 +515,10 @@ async function fetchMenu(station, headers, metrics = null) {
   } catch (error) {
     return { rows: [], byNo: new Map(), source: '', error: String(error && error.message || error) };
   }
+  })();
+  menuInFlight.set(key, pendingRequest);
+  try { return await pendingRequest; }
+  finally { if (menuInFlight.get(key) === pendingRequest) menuInFlight.delete(key); }
 }
 
 function normalizeVod(row, station, req) {

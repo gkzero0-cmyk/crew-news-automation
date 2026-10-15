@@ -44,6 +44,26 @@ async function main() {
     if (typeof internals.clearMenuCacheForTest === 'function') internals.clearMenuCacheForTest();
   }
 
+  // Concurrent lookups of one station must share the same upstream request.
+  global.fetch = async function(url) {
+    fetchCalls += 1;
+    await new Promise(resolve => setImmediate(resolve));
+    return {
+      ok:true, status:200, url:String(url),
+      text:async () => JSON.stringify({board:[{bbsNo:'777',name:'공지'}]})
+    };
+  };
+  try {
+    internals.clearMenuCacheForTest();
+    const before=fetchCalls;
+    const rows=await Promise.all(Array.from({length:5},()=>internals.fetchMenu('concurrentstation',{})));
+    assert.equal(fetchCalls-before,1,'five simultaneous menu lookups should share one SOOP request');
+    assert.ok(rows.every(row=>row.byNo.get('777')==='공지'));
+  } finally {
+    global.fetch=originalFetch;
+    internals.clearMenuCacheForTest();
+  }
+
   console.log('poll-cost-optimization.test.js passed');
 }
 

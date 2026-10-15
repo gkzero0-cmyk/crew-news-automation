@@ -37,6 +37,29 @@ assert.equal(
   'generic/direct API calls keep full menu fidelity when no crew context is supplied'
 );
 
+assert.equal(
+  crewInternals.shouldFetchMenuForRows([
+    { title_name:'ZZAM지트 합방', contents:'오늘 저녁', bbs_no:'11', bbs_name:'공식 일정' }
+  ], 'ZZAM지트'),
+  false,
+  'source board name avoids a redundant SOOP menu call'
+);
+assert.equal(
+  crewInternals.shouldFetchMenuForRows([
+    { title_name:'ZZAM지트 합방', contents:'오늘 저녁' }
+  ], 'ZZAM지트'),
+  false,
+  'a missing board number cannot be enriched by requesting the menu'
+);
+assert.equal(
+  crewInternals.shouldFetchMenuForRows([
+    { title_name:'조적단 개인 일상', contents:'그냥 방송' },
+    { title_name:'정기회의', bbs_no:'22' }
+  ], '조적단'),
+  true,
+  'mixed feeds still resolve any relevant unlabeled board'
+);
+
 assert.equal(typeof batchInternals.buildVodSearchPlan, 'function', 'VOD staged search plan helper should exist');
 assert.deepEqual(
   batchInternals.buildVodSearchPlan(

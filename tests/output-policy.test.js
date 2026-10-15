@@ -423,4 +423,16 @@ for (const [crew, current, expected] of [
   assert.doesNotMatch(unrelated.selected.displayText,/Trash Day/);
 }
 
+// Named collaborations are sourced from the chosen announcement only.
+{
+  const make=(originalTitle,id='heading-test')=>({ok:true,strictCrew:'ZZAM지트',selected:{id,summary:'합방',displaySummary:'크루 합방',activityDate:'2026-10-17',imageUrl:'',sheetImageUrl:''},results:[{posts:[{id,originalTitle,contents:'오늘 크루 모임'}]}]});
+  assert.equal(apply(make('10/17 ZZAM지트 오버쿡드2 합방')).selected.displayText,'ZZAM지트 - 오버쿡드2 합방 (10/17) 📌');
+  assert.equal(apply(make('크루 합방: 리썰 컴퍼니')).selected.displayText,'ZZAM지트 - 리썰 컴퍼니 합방 (10/17) 📌');
+  assert.equal(apply(make('합방 (Trash Day)')).selected.displayText,'ZZAM지트 - Trash Day 합방 (10/17) 📌');
+  assert.equal(apply(make('오늘 크루 합방')).selected.displayText,'ZZAM지트 - 크루 합방 (10/17) 📌');
+  const unrelated=make('오늘 크루 합방');
+  unrelated.results[0].posts.push({id:'other-post',originalTitle:'오버쿡드2 합방',contents:'별도 일정'});
+  assert.equal(apply(unrelated).selected.displayText,'ZZAM지트 - 크루 합방 (10/17) 📌');
+}
+
 console.log('output-policy regression tests passed');
