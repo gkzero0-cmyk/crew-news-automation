@@ -164,4 +164,40 @@ const apply=p=>policy.applyOutputPolicy(p,{stableFingerprint:fingerprint,blankUr
     'no matching real image must issue a proper clear instruction');
 }
 
+
+{
+  const poster='https://stimg.sooplive.com/NORMAL_BBS/8/25819298/35631791973160029.jpeg';
+  const core={ok:true,strictCrew:'ZZAM지트',selected:{
+    id:'209792173',summary:'Trash Day 합방',displaySummary:'Trash Day 합방',
+    activityDate:'2026-10-14',imageUrl:'',sheetImageUrl:'',imageSource:'none'
+  },mediaCandidates:[{id:'209793809',station:'sagesv',authorId:'sagesv',
+    title:'261014 수요일 !',originalTitle:'261014 수요일 !',
+    contents:'오늘밤 8시부터 Trash Day 합방(w. 루센, 햄쏘따, 우냥, 꼬마거북이)',
+    publishedAt:'2026-10-14 19:19:43',imageUrl:poster,imageCandidateCount:1}]};
+  const good=apply(core);
+  assert.strictEqual(good.selected.imageUrl,poster,'valid same-event game art fills empty image slot');
+  assert.strictEqual(good.selected.imageSource,'post_member');
+  assert.strictEqual(good.selected.imagePostId,'209793809');
+  assert.match(good.selected.sheetImageUrl,/\/api\/image\?url=/);
+  const wrong=apply({...core,mediaCandidates:[{...core.mediaCandidates[0],id:'other',
+    title:'PEAK 합방',contents:'오늘 PEAK 합방'}]});
+  assert.strictEqual(wrong.selected.imageUrl,'','different game image cannot fill slot');
+  const selfie=apply({...core,mediaCandidates:[{...core.mediaCandidates[0],id:'selfie',
+    title:'셀카',contents:'오늘 밤 Trash Day 합방'}]});
+  assert.strictEqual(selfie.selected.imageUrl,'','personal selfie is excluded');
+  const wrongDay=apply({...core,mediaCandidates:[{...core.mediaCandidates[0],id:'next',
+    publishedAt:'2026-10-15 19:19:43'}]});
+  assert.strictEqual(wrongDay.selected.imageUrl,'','other dates cannot be reused');
+}
+{
+  const url='https://videoimg.sooplive.com/php/SnapshotLoad.php?rowKey=20261004_1279B109_297581563_1_r&column=2&t=1791104356';
+  const actual=apply({ok:true,strictCrew:'장지수용소',selected:{
+    id:'208932989',summary:'나들이',displaySummary:'나들이',activityDate:'2026-10-05',
+    imageUrl:url,sheetImageUrl:url,imageSource:'leader_vod_editorial'
+  }});
+  assert.strictEqual(actual.selected.imageUrl,'','visually unrelated VOD frame removed');
+  assert.strictEqual(actual.selected.sheetImageUrl,policy.DEFAULT_BLANK_SHEET_IMAGE_URL);
+  assert.match(actual.selected.imageSelectionReason,/다른 회차/);
+}
+
 console.log('semantic news and image policy regressions: ok');

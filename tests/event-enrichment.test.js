@@ -150,4 +150,16 @@ assert.strictEqual(enrichment.shouldReplaceCore(
   }
 }
 
+
+{
+  const p1={id:'leader',station:'leader',authorId:'leader',title:'테스트크루 정기회의',
+    boardName:'공지사항',publishedAt:'2026-10-15 12:00:00',
+    contents:'오늘 테스트크루 정기회의 있습니다',imageUrl:''};
+  const p2={id:'member',station:'member',authorId:'member',title:'오늘 회의',
+    boardName:'잡담',publishedAt:'2026-10-15 11:00:00',
+    contents:'테스트크루 정기회의 갑니다',imageUrl:'https://stimg.sooplive.com/NORMAL_BBS/1/photo.png'};
+  const rep=enrichment.synthesizeCrewEvent([p1,p2],'테스트크루','leader','2026-10-15');
+  assert.strictEqual(rep?.id,'leader','representative news must not depend on image presence');
+}
+
 console.log('event-enrichment tests passed');

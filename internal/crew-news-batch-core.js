@@ -1242,6 +1242,23 @@ module.exports = async function handler(req, res) {
       }
 
       const posts = crew ? rawPosts.map(post => strictCrewPost(post, crew, station)).filter(Boolean) : rawPosts;
+      // Keep a bounded image-only record of public member posts that may not
+      // repeat the literal crew name. No additional network requests.
+      const mediaCandidates=crew ? rawPosts
+        .filter(p=>p && p.imageUrl && p.imageAmbiguous!==true &&
+          (!p.authorId || String(p.authorId)===String(station)) &&
+          (!p.station || String(p.station)===String(station)))
+        .slice(0,8)
+        .map(p=>({
+          id:String(p.id||''),station:String(station),authorId:String(p.authorId||station),
+          title:String(p.title||'').slice(0,180),
+          originalTitle:String(p.originalTitle||p.title||'').slice(0,180),
+          contents:String(p.contents||'').slice(0,900),
+          publishedAt:String(p.publishedAt||''),
+          imageUrl:String(p.imageUrl||''),
+          imageCandidateCount:Number(p.imageCandidateCount||0),
+          imageAmbiguous:Boolean(p.imageAmbiguous)
+        })) : [];
       return {
         station,
         ok: true,
@@ -1253,6 +1270,7 @@ module.exports = async function handler(req, res) {
         rawCount: rawPosts.length,
         strictFiltered: Boolean(crew),
         extraSearchFailed,
+        mediaCandidates,
         posts
       };
     } catch (error) {
@@ -1361,6 +1379,10 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  const mediaCandidates=selected ? results.flatMap(row=>row&&row.ok?row.mediaCandidates||[]:[])
+    .filter(p=>String(p.publishedAt||'').slice(0,10)===
+      String(selected.activityDate||selected.publishedAt||'').slice(0,10))
+    .slice(0,24) : [];
   const failures = results.filter(item => !item.ok);
   const auxiliaryFailures = results.filter(item => item && item.ok && item.extraSearchFailed);
   const staleSources = results.filter(item => item && item.ok && item.stale);
@@ -1439,6 +1461,7 @@ module.exports = async function handler(req, res) {
     healthStatus,
     preservePrevious,
     rawCandidateCount,
+    mediaCandidates,
     selectedFingerprint,
     previousFingerprint,
     unchanged,
