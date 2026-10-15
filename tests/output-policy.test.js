@@ -435,4 +435,32 @@ for (const [crew, current, expected] of [
   assert.equal(apply(unrelated).selected.displayText,'ZZAM지트 - 크루 합방 (10/17) 📌');
 }
 
+// The selected 10/17 Chuntaverse post specifically names Bingming's
+// counseling event. A same-day member VR broadcast is not proof of that event.
+{
+  const source={
+    id:'209616935',
+    originalTitle:'10월 17일 5시 빙밍이의 천타버스 상담 컨텐츠!',
+    contents:'2026년 10월 17일 오후 5시! 천타버스 상담사들이 찾아옵니다! 상담사 멤버 : 천양 김웰로 카푸 캬앙 빙밍',
+    publishedAt:'2026-10-12 18:47:57'
+  };
+  const payload={
+    ok:true,strictCrew:'천타버스',
+    selected:{
+      id:'209616935',summary:'콘텐츠',displaySummary:'콘텐츠',
+      activityDate:'2026-10-17',imageUrl:'',sheetImageUrl:''
+    },
+    results:[{posts:[source]}]
+  };
+  const out=apply(payload);
+  assert.equal(out.selected.summary,'빙밍이의 상담 콘텐츠');
+  assert.equal(out.selected.displayText,'천타버스 - 빙밍이의 상담 콘텐츠 (10/17) 📌');
+  const otherCrew=apply({...payload,strictCrew:'ZZAM지트',selected:{...payload.selected,strictCrew:'ZZAM지트'}});
+  assert.doesNotMatch(otherCrew.selected.displayText,/빙밍이의 상담/);
+  const otherPost=apply({...payload,selected:{...payload.selected,id:'different-post'},results:[{posts:[source,{id:'different-post',originalTitle:'일반 콘텐츠 안내',contents:'새로운 크루 이벤트'}]}]});
+  assert.doesNotMatch(otherPost.selected.displayText,/빙밍이의 상담/);
+  const unrelatedPost=apply({...payload,results:[{posts:[source,{id:'209872185',originalTitle:'곧 뱅온!',contents:'6시 천타버스 vr 합방 있습니다!'}]}]});
+  assert.equal(unrelatedPost.selected.displayText,'천타버스 - 빙밍이의 상담 콘텐츠 (10/17) 📌');
+}
+
 console.log('output-policy regression tests passed');
