@@ -25,3 +25,48 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run tests
         run: npm test
+
+
+      - name: Read-only eight-crew source audit (temporary)
+        if: always()
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const names=[
+              ['조적단','yjkim5500','209855777'],
+              ['강씨세가','hwayang3','208597179'],
+              ['진드기','ttobeherored','209685379'],
+              ['천타버스','doormomo','209872185'],
+              ['ZZAM지트','yeonwoonayng','209792173'],
+              ['장지수용소','iamquaddurup','208932989'],
+              ['머리퍼리','myang0315','209600547'],
+              ['자라섬','dotcha','209697679'],
+              ['강씨세가 추가','rkdakstlr911',''],
+              ['강씨세가 추가','mmange2',''],
+              ['강씨세가 추가','nangnan',''],
+              ['천타버스 예정','kappuchan','209616935'],
+              ['천타버스 최근','243000','']
+            ];
+            for(const [crew,station,id] of names){
+              try {
+                const url='https://crew-news-automation.vercel.app/api/crew-news?station='+station+'&per_page=45';
+                const response=await fetch(url,{signal:AbortSignal.timeout(14000)});
+                if(!response.ok){console.log('crew-audit',JSON.stringify({crew,station,http:response.status}));continue;}
+                const data=await response.json();
+                const posts=Array.isArray(data.posts)?data.posts:[];
+                const source=posts.find(p=>String(p.id)===id);
+                const recent=posts.filter(p=>
+                  String(p.publishedAt||'').slice(0,10)>='2026-10-09'&&
+                  /강씨세가|미스테리|천타버스|크루|합방|점호|회의|나들이|로블록스|조적단|진드기|ZZAM지트|자라섬|머리퍼리/i.test([p.title,p.originalTitle,p.contents].join(' '))
+                ).slice(0,9);
+                const shape=p=>p?{
+                  id:String(p.id||''),date:p.publishedAt,
+                  title:String(p.originalTitle||p.title||'').slice(0,130),
+                  body:String(p.contents||'').replace(/\s+/g,' ').slice(0,240),
+                  access:p.accessType,owner:p.station
+                }:null;
+                console.log('crew-audit',JSON.stringify({crew,station,http:response.status,count:posts.length,found:!!source,source:shape(source),recent:recent.map(shape)}));
+              }catch(e){console.log('crew-audit',JSON.stringify({crew,station,error:String(e?.message||e)}));}
+            }
+          })();
+          NODE
