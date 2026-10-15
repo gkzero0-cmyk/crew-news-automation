@@ -37,7 +37,12 @@ const jara = enrichment.synthesizeCrewEvent([
 ], '자라섬', 'dstv');
 assert.ok(jara);
 assert.strictEqual(jara.displaySummary, '자라섬 피파 CK 합방');
-assert.strictEqual(jara.id, 'b');
+assert.strictEqual(jara.id, 'a',
+  'the crew leader announcement remains the news source even if another member attached an image');
+const jaraMedia=enrichment.attachBestImage(jara,[],[],'dstv');
+assert.strictEqual(jaraMedia.imageUrl,'https://stimg.sooplive.com/NORMAL_BBS/jara.png',
+  'a matching member image may supplement the leader announcement');
+assert.strictEqual(jaraMedia.imageSource,'post_member');
 
 const jaraUpcoming = enrichment.synthesizeCrewEvent([
   {id:'208785083',station:'seh0305',authorId:'seh0305',title:'오누레 공쥬ㅣ',publishedAt:'2026-10-03 17:16:45',boardName:'으네으 공쥐',contents:'내일 저녁에 자라섬 vrc컨텐츠까지 가겠습니다',imageUrl:'https://res.sooplive.com/images/chat/emoticon/big/6.png',sheetImageUrl:'https://crew-news-automation.vercel.app/api/image?url=emoji&fit=sheet'}
