@@ -25,3 +25,21 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run tests
         run: npm test
+
+      - name: Inspect selected Chuntaverse public notice (temporary)
+        if: always()
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            for (const [station,id] of [['kappuchan','209616935'],['doormomo','209872185']]) {
+              const u='https://crew-news-automation.vercel.app/api/crew-news?station='+station+'&per_page=50&crew='+encodeURIComponent('천타버스');
+              try {
+                const r=await fetch(u,{signal:AbortSignal.timeout(16000)});
+                const data=await r.json();
+                const posts=Array.isArray(data.posts)?data.posts:[];
+                const p=posts.find(x=>String(x.id)===id);
+                console.log('chuntaverse-public-diagnostic',JSON.stringify({station,status:r.status,ok:data.ok,count:posts.length,found:!!p,post:p?{id:p.id,title:p.title,originalTitle:p.originalTitle,contents:String(p.contents||'').slice(0,2400),publishedAt:p.publishedAt,boardName:p.boardName,accessType:p.accessType}:null}));
+              } catch(e) { console.log('chuntaverse-public-diagnostic-error',station,String(e?.message||e)); }
+            }
+          })();
+          NODE
