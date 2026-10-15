@@ -33,7 +33,7 @@ function fakeRange(options={}){
         const color=expected?o.color:body?o.body:o.pin;
         return {getForegroundColor(){return color;},isUnderline(){return o.underline;}};
       }
-    }};
+    };}
   };
 }
 const crew={crew:'천타버스',newsCell:'I6',color:'#61ffec'};
