@@ -463,4 +463,53 @@ for (const [crew, current, expected] of [
   assert.equal(unrelatedPost.selected.displayText,'천타버스 - 빙밍이의 상담 콘텐츠 (10/17) 📌');
 }
 
+
+// Editorial accuracy: a dated sheet headline already communicates when the
+// event happens. Never copy "오늘의" from a generic notice into its name.
+{
+  const selected={
+    id:'209872185',summary:'합방',displaySummary:'천타버스 합방',
+    activityDate:'2026-10-15',imageUrl:'',sheetImageUrl:''
+  };
+  const one={
+    id:'209872185',originalTitle:'곧 뱅온!',
+    contents:'6시 천타버스 vr 합방 있습니다!'
+  };
+  const payload={ok:true,strictCrew:'천타버스',selected,
+    results:[{posts:[one]}]};
+  const output=apply(payload);
+  assert.equal(output.selected.summary,'VR 합방');
+  assert.equal(output.selected.displayText,'천타버스 - VR 합방 (10/15) 📌');
+  assert.equal(output.selected.activityDate,'2026-10-15');
+  const joined=apply({...payload,results:[{posts:[one,{
+    id:'different',originalTitle:'오늘의 PEAK 합방',contents:'다른 행사의 공지'
+  }]}]});
+  assert.equal(joined.selected.displayText,'천타버스 - VR 합방 (10/15) 📌',
+    'other posts must not contaminate selected activity title');
+  const unsourced=apply({...payload,results:[{posts:[{
+    id:'209872185',originalTitle:'곧 뱅온!',contents:'6시 천타버스 합방 있습니다!'
+  },{id:'other',originalTitle:'VR 합방',contents:'다른 행사의 VR 합방'}]}]});
+  assert.equal(unsourced.selected.displayText,'천타버스 - 크루 합방 (10/15) 📌',
+    'other-post VR activity is not proof about selected collaboration');
+  const spaced=apply({...payload,results:[{posts:[{
+    id:'209872185',originalTitle:'오늘의 VR합방',
+    contents:'천타버스 VR합방 진행합니다'
+  }]}]});
+  assert.equal(spaced.selected.displayText,'천타버스 - VR 합방 (10/15) 📌');
+}
+// Do not strip a named show "오늘의 운세" or mislabel VR vs VRC.
+assert.equal(policy.cleanGenericEventHeadline('오늘의 VR합방'),'VR 합방');
+assert.equal(policy.cleanGenericEventHeadline('오늘의 VR 합방'),'VR 합방');
+assert.equal(policy.cleanGenericEventHeadline('오늘의 점호'),'점호');
+assert.equal(policy.cleanGenericEventHeadline('오늘의 운세'),'오늘의 운세');
+assert.equal(policy.cleanGenericEventHeadline('내일 VRC콘텐츠'),'VRC 콘텐츠');
+{
+  const p={ok:true,strictCrew:'테스트크루',selected:{
+    id:'vrc',summary:'합방',displaySummary:'테스트크루 합방',
+    activityDate:'2026-10-15',imageUrl:'',sheetImageUrl:''
+  },results:[{posts:[{id:'vrc',originalTitle:'곧 시작합니다',contents:'테스트크루 VRC에서 합방을 합니다'}]}]};
+  const out=apply(p);
+  assert.doesNotMatch(out.selected.displayText,/VR 합방/);
+}
+
 console.log('output-policy regression tests passed');
